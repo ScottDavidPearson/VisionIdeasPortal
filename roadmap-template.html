@@ -1,0 +1,313 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Vision Ideas Portal - Roadmap Report</title>
+    <style>
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            margin: 0;
+            padding: 20px;
+            color: #333;
+            line-height: 1.6;
+        }
+        
+        .header {
+            text-align: center;
+            border-bottom: 3px solid #1976d2;
+            padding-bottom: 20px;
+            margin-bottom: 30px;
+        }
+        
+        .header h1 {
+            color: #1976d2;
+            margin: 0;
+            font-size: 2.5em;
+        }
+        
+        .header .subtitle {
+            color: #666;
+            font-size: 1.2em;
+            margin-top: 10px;
+        }
+        
+        .summary {
+            display: grid;
+            grid-template-columns: repeat(4, 1fr);
+            gap: 20px;
+            margin-bottom: 30px;
+        }
+        
+        .summary-card {
+            background: #f5f5f5;
+            padding: 20px;
+            border-radius: 8px;
+            text-align: center;
+            border-left: 4px solid #1976d2;
+        }
+        
+        .summary-card h3 {
+            margin: 0;
+            font-size: 2em;
+            color: #1976d2;
+        }
+        
+        .summary-card p {
+            margin: 5px 0 0 0;
+            color: #666;
+            font-weight: bold;
+        }
+        
+        .filters {
+            background: #f9f9f9;
+            padding: 15px;
+            border-radius: 8px;
+            margin-bottom: 30px;
+        }
+        
+        .filters h3 {
+            margin-top: 0;
+            color: #1976d2;
+        }
+        
+        .filter-tags {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 8px;
+        }
+        
+        .filter-tag {
+            background: #1976d2;
+            color: white;
+            padding: 4px 12px;
+            border-radius: 16px;
+            font-size: 0.9em;
+        }
+        
+        .roadmap-section {
+            margin-bottom: 40px;
+        }
+        
+        .section-header {
+            background: #1976d2;
+            color: white;
+            padding: 15px 20px;
+            margin: 0 0 20px 0;
+            border-radius: 8px;
+            font-size: 1.3em;
+            font-weight: bold;
+        }
+        
+        .idea-card {
+            background: white;
+            border: 1px solid #ddd;
+            border-radius: 8px;
+            padding: 20px;
+            margin-bottom: 15px;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+        }
+        
+        .idea-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: flex-start;
+            margin-bottom: 10px;
+        }
+        
+        .idea-title {
+            font-size: 1.2em;
+            font-weight: bold;
+            color: #333;
+            margin: 0;
+        }
+        
+        .idea-votes {
+            background: #e3f2fd;
+            color: #1976d2;
+            padding: 4px 12px;
+            border-radius: 16px;
+            font-weight: bold;
+        }
+        
+        .idea-meta {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 10px;
+            margin-bottom: 10px;
+        }
+        
+        .meta-chip {
+            background: #f0f0f0;
+            padding: 4px 12px;
+            border-radius: 16px;
+            font-size: 0.9em;
+            color: #666;
+        }
+        
+        .meta-chip.status {
+            background: #e8f5e8;
+            color: #2e7d32;
+        }
+        
+        .meta-chip.promoted {
+            background: #fff3e0;
+            color: #ed6c02;
+        }
+        
+        .idea-description {
+            color: #666;
+            margin-bottom: 15px;
+            line-height: 1.5;
+        }
+        
+        .idea-details {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+            gap: 15px;
+            margin-top: 15px;
+            padding-top: 15px;
+            border-top: 1px solid #eee;
+        }
+        
+        .detail-section h4 {
+            margin: 0 0 8px 0;
+            color: #1976d2;
+            font-size: 1em;
+        }
+        
+        .detail-list {
+            list-style: none;
+            padding: 0;
+            margin: 0;
+        }
+        
+        .detail-list li {
+            background: #f5f5f5;
+            padding: 4px 8px;
+            margin-bottom: 4px;
+            border-radius: 4px;
+            font-size: 0.9em;
+        }
+        
+        .footer {
+            margin-top: 50px;
+            padding-top: 20px;
+            border-top: 1px solid #ddd;
+            text-align: center;
+            color: #666;
+            font-size: 0.9em;
+        }
+        
+        @media print {
+            body { margin: 0; }
+            .idea-card { break-inside: avoid; }
+        }
+    </style>
+</head>
+<body>
+    <div class="header">
+        <h1>🚀 Vision Ideas Portal</h1>
+        <div class="subtitle">Product Roadmap Report</div>
+        <div class="subtitle">Generated on {{generatedDate}}</div>
+    </div>
+
+    <div class="summary">
+        <div class="summary-card">
+            <h3>{{summary.totalItems}}</h3>
+            <p>Total Items</p>
+        </div>
+        <div class="summary-card">
+            <h3>{{summary.approved}}</h3>
+            <p>Approved</p>
+        </div>
+        <div class="summary-card">
+            <h3>{{summary.inProgress}}</h3>
+            <p>In Progress</p>
+        </div>
+        <div class="summary-card">
+            <h3>{{summary.completed}}</h3>
+            <p>Completed</p>
+        </div>
+    </div>
+
+    {{#if hasFilters}}
+    <div class="filters">
+        <h3>Applied Filters</h3>
+        <div class="filter-tags">
+            {{#each filterTags}}
+            <span class="filter-tag">{{this}}</span>
+            {{/each}}
+        </div>
+    </div>
+    {{/if}}
+
+    {{#each sections}}
+    <div class="roadmap-section">
+        <h2 class="section-header">{{title}} ({{count}} items)</h2>
+        
+        {{#each ideas}}
+        <div class="idea-card">
+            <div class="idea-header">
+                <h3 class="idea-title">{{title}}</h3>
+                <div class="idea-votes">{{voteCount}} votes</div>
+            </div>
+            
+            <div class="idea-meta">
+                <span class="meta-chip status">{{statusLabel}}</span>
+                <span class="meta-chip">{{category}}</span>
+                <span class="meta-chip">{{source}}</span>
+                {{#if promoted}}
+                <span class="meta-chip promoted">Promoted as {{promotionType}}</span>
+                {{/if}}
+                {{#if estimatedEffort}}
+                <span class="meta-chip">{{estimatedEffort}} {{effortUnitLabel}}</span>
+                {{/if}}
+            </div>
+            
+            <div class="idea-description">{{description}}</div>
+            
+            {{#if hasDetails}}
+            <div class="idea-details">
+                {{#if features}}
+                <div class="detail-section">
+                    <h4>Features</h4>
+                    <ul class="detail-list">
+                        {{#each features}}
+                        <li>{{this}}</li>
+                        {{/each}}
+                    </ul>
+                </div>
+                {{/if}}
+                
+                {{#if useCases}}
+                <div class="detail-section">
+                    <h4>Use Cases</h4>
+                    <ul class="detail-list">
+                        {{#each useCases}}
+                        <li>{{this}}</li>
+                        {{/each}}
+                    </ul>
+                </div>
+                {{/if}}
+                
+                {{#if detailedRequirements}}
+                <div class="detail-section">
+                    <h4>Requirements</h4>
+                    <div>{{detailedRequirements}}</div>
+                </div>
+                {{/if}}
+            </div>
+            {{/if}}
+        </div>
+        {{/each}}
+    </div>
+    {{/each}}
+
+    <div class="footer">
+        <p>Vision Ideas Portal - Product Roadmap Report</p>
+        <p>Total Estimated Effort: {{summary.totalEffort}} {{effortUnit}}</p>
+        <p>Report includes {{summary.promoted}} promoted items ready for development</p>
+    </div>
+</body>
+</html>

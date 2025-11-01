@@ -1,0 +1,94 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>CSV Import Test</title>
+    <style>
+        body { font-family: Arial, sans-serif; margin: 20px; }
+        textarea { width: 100%; height: 200px; margin: 10px 0; }
+        button { padding: 10px 20px; margin: 10px 0; }
+        .result { margin: 10px 0; padding: 10px; border: 1px solid #ccc; }
+        .success { background-color: #d4edda; }
+        .error { background-color: #f8d7da; }
+    </style>
+</head>
+<body>
+    <h1>CSV Import Test</h1>
+    
+    <h3>Step 1: Login to get token</h3>
+    <button onclick="login()">Login as Admin</button>
+    <div id="loginResult"></div>
+    
+    <h3>Step 2: Import CSV Data</h3>
+    <textarea id="csvData" placeholder="Paste CSV data here...">Title,Description
+Test Idea,This is a test description
+Another Idea,Another test description</textarea>
+    <br>
+    <button onclick="importCSV()">Import CSV</button>
+    <div id="importResult"></div>
+
+    <script>
+        let authToken = '';
+        
+        async function login() {
+            try {
+                const response = await fetch('http://localhost:5000/api/auth/login', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json'
+                    },
+                    body: JSON.stringify({
+                        username: 'admin',
+                        password: 'admin123'
+                    })
+                });
+                
+                const result = await response.json();
+                const loginDiv = document.getElementById('loginResult');
+                
+                if (result.success) {
+                    authToken = result.token;
+                    loginDiv.innerHTML = '<div class="result success">✅ Login successful! Token obtained.</div>';
+                } else {
+                    loginDiv.innerHTML = '<div class="result error">❌ Login failed: ' + result.error + '</div>';
+                }
+            } catch (error) {
+                document.getElementById('loginResult').innerHTML = '<div class="result error">❌ Login error: ' + error.message + '</div>';
+            }
+        }
+        
+        async function importCSV() {
+            if (!authToken) {
+                alert('Please login first!');
+                return;
+            }
+            
+            const csvText = document.getElementById('csvData').value;
+            
+            try {
+                const response = await fetch('http://localhost:5000/api/admin/import/csv-text', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                        'Authorization': 'Bearer ' + authToken
+                    },
+                    body: JSON.stringify({
+                        csvText: csvText
+                    })
+                });
+                
+                const result = await response.json();
+                const importDiv = document.getElementById('importResult');
+                
+                if (result.success) {
+                    importDiv.innerHTML = '<div class="result success">✅ ' + result.message + 
+                        '<br>Statistics: ' + JSON.stringify(result.statistics) + '</div>';
+                } else {
+                    importDiv.innerHTML = '<div class="result error">❌ Import failed: ' + result.error + '</div>';
+                }
+            } catch (error) {
+                document.getElementById('importResult').innerHTML = '<div class="result error">❌ Import error: ' + error.message + '</div>';
+            }
+        }
+    </script>
+</body>
+</html>

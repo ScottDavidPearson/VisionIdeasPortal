@@ -1,0 +1,27 @@
+{
+  "status": "Aha Ideas Portal is running!",
+  "backend": {
+    "url": "http://localhost:5000",
+    "features": [
+      "PDF upload",
+      "Image upload",
+      "File validation",
+      "Drag & drop support"
+    ]
+  },
+  "frontend": {
+    "url": "http://localhost:3000",
+    "features": [
+      "React interface",
+      "Material-UI components",
+      "PDF preview",
+      "File management"
+    ]
+  },
+  "setup": {
+    "backend_dependencies": "✅ Installed",
+    "frontend_dependencies": "✅ Installed",
+    "uploads_directory": "✅ Created",
+    "servers": "✅ Running"
+  }
+}
