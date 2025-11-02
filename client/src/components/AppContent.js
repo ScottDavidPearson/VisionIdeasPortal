@@ -40,7 +40,7 @@ import {
   AdminPanelSettings as AdminIcon
 } from '@mui/icons-material';
 import axios from 'axios';
-import { useAuth } from '../contexts/MockAuthContext';
+import { useAuth } from '../contexts/AuthContext';
 import NewIdeaDialog from './NewIdeaDialog';
 import LinkifiedText from './LinkifiedText';
 import IdeaDetailDialog from './IdeaDetailDialog';
@@ -48,9 +48,9 @@ import ProductTeamDashboard from './ProductTeamDashboard';
 import LinkTest from './LinkTest';
 import CommentModal from './CommentModal';
 
-// Configure axios to use local backend for development  
-// const API_BASE_URL = 'https://viscidly-superexplicit-nell.ngrok-free.dev';
-// axios.defaults.baseURL = API_BASE_URL;
+// Configure axios to use ngrok for remote access
+const API_BASE_URL = 'https://viscidly-superexplicit-nell.ngrok-free.dev';
+axios.defaults.baseURL = API_BASE_URL;
 
 const AppContent = () => {
   const { user, isAuthenticated, logout, isAdmin } = useAuth();

@@ -50,9 +50,9 @@ import LinkTest from './components/LinkTest';
 import CommentModal from './components/CommentModal';
 import LoginDialog from './components/LoginDialog';
 
-// Configure axios to use local backend for development
-// const API_BASE_URL = 'https://viscidly-superexplicit-nell.ngrok-free.dev';
-// axios.defaults.baseURL = API_BASE_URL;
+// Configure axios to use ngrok for remote access
+const API_BASE_URL = 'https://viscidly-superexplicit-nell.ngrok-free.dev';
+axios.defaults.baseURL = API_BASE_URL;
 
 const theme = createTheme({
   palette: {
@@ -407,6 +407,8 @@ function App() {
                     setSelectedCategory('');
                     setSelectedStatus('');
                     setSelectedSource('');
+                    // Fetch all ideas when filters are cleared
+                    fetchIdeas();
                   }}
                   fullWidth
                 >

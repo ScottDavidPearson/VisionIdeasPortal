@@ -9,8 +9,8 @@ export const msalConfig = {
     auth: {
         clientId: "04b07795-8ddb-461a-bbee-02f9e1bf7b46", // Microsoft Graph Explorer sample app - safe for testing
         authority: "https://login.microsoftonline.com/common", // Allows any Microsoft account
-        redirectUri: "http://localhost:3001", // Your local dev server
-        postLogoutRedirectUri: "http://localhost:3001",
+        redirectUri: process.env.REACT_APP_REDIRECT_URI || "http://localhost:3001", // Support both local and ngrok
+        postLogoutRedirectUri: process.env.REACT_APP_REDIRECT_URI || "http://localhost:3001",
         navigateToLoginRequestUrl: false,
     },
     cache: {

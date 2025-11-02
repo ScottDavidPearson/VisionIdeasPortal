@@ -5,8 +5,3 @@ tunnels:
     addr: 5000
     basic_auth:
       - "jestais:secure123"
-  frontend:
-    proto: http
-    addr: 3001
-    basic_auth:
-      - "jestais:secure123"
