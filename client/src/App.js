@@ -49,6 +49,7 @@ import ProductTeamDashboard from './components/ProductTeamDashboard';
 import LinkTest from './components/LinkTest';
 import CommentModal from './components/CommentModal';
 import LoginDialog from './components/LoginDialog';
+import GraphExplorerAuth from './components/GraphExplorerAuth';
 
 // Configure axios to use ngrok for remote access
 const API_BASE_URL = 'https://viscidly-superexplicit-nell.ngrok-free.dev';
@@ -82,6 +83,7 @@ function App() {
   const [showCommentModal, setShowCommentModal] = useState(false);
   const [adminUser, setAdminUser] = useState(null);
   const [showLoginDialog, setShowLoginDialog] = useState(false);
+  const [graphUser, setGraphUser] = useState(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
 
@@ -328,6 +330,39 @@ function App() {
           <Typography variant="h4" gutterBottom>
             Share Your Ideas
           </Typography>
+
+          {/* Authentication Test Section */}
+          <Paper sx={{ p: 3, mb: 3, bgcolor: '#f8f9fa' }}>
+            <Typography variant="h6" gutterBottom>
+              🧪 Authentication Testing
+            </Typography>
+            <Grid container spacing={3}>
+              <Grid item xs={12} md={6}>
+                <Typography variant="subtitle1" gutterBottom>
+                  Option 1: Microsoft Graph Explorer (No IT Approval)
+                </Typography>
+                <GraphExplorerAuth onUserChange={setGraphUser} />
+              </Grid>
+              <Grid item xs={12} md={6}>
+                <Typography variant="subtitle1" gutterBottom>
+                  Option 2: Admin Dashboard (JWT)
+                </Typography>
+                <Box>
+                  <Typography variant="body2" color="text.secondary" sx={{ mb: 2 }}>
+                    Use admin credentials: <strong>admin / admin123</strong>
+                  </Typography>
+                  <Button
+                    variant="contained"
+                    startIcon={<AdminIcon />}
+                    onClick={handleSwitchToAdmin}
+                    fullWidth
+                  >
+                    Admin Dashboard Login
+                  </Button>
+                </Box>
+              </Grid>
+            </Grid>
+          </Paper>
           
           {/* Error Display */}
           {error && (
