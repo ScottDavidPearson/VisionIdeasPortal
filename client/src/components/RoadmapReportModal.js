@@ -31,7 +31,16 @@ const RoadmapReportModal = ({ open, onClose, ideas, filters }) => {
     promoted: ideas.filter(i => i.promoted).length
   };
 
-  // Group ideas by status
+  // Group ideas by planned release quarter for client-ready roadmap
+  const groupedByRelease = {
+    'Q1': ideas.filter(i => i.plannedRelease === 'Q1'),
+    'Q2': ideas.filter(i => i.plannedRelease === 'Q2'),
+    'Q3': ideas.filter(i => i.plannedRelease === 'Q3'),
+    'Q4': ideas.filter(i => i.plannedRelease === 'Q4'),
+    'Unscheduled': ideas.filter(i => !i.plannedRelease)
+  };
+
+  // Also keep status grouping as backup
   const groupedIdeas = {
     approved: ideas.filter(i => i.status === 'approved'),
     in_progress: ideas.filter(i => i.status === 'in_progress'),
@@ -53,6 +62,28 @@ const RoadmapReportModal = ({ open, onClose, ideas, filters }) => {
       case 'in_progress': return 'In Progress';
       case 'completed': return 'Completed';
       default: return status;
+    }
+  };
+
+  const getReleaseColor = (quarter) => {
+    switch (quarter) {
+      case 'Q1': return '#1976d2'; // Blue
+      case 'Q2': return '#388e3c'; // Green
+      case 'Q3': return '#f57c00'; // Orange
+      case 'Q4': return '#7b1fa2'; // Purple
+      case 'Unscheduled': return '#616161'; // Grey
+      default: return '#666';
+    }
+  };
+
+  const getReleaseLabel = (quarter) => {
+    switch (quarter) {
+      case 'Q1': return 'Q1 - January to March';
+      case 'Q2': return 'Q2 - April to June';
+      case 'Q3': return 'Q3 - July to September';
+      case 'Q4': return 'Q4 - October to December';
+      case 'Unscheduled': return 'Unscheduled Items';
+      default: return quarter;
     }
   };
 
@@ -185,25 +216,34 @@ const RoadmapReportModal = ({ open, onClose, ideas, filters }) => {
           </Box>
         )}
 
-        {/* Ideas by Status */}
-        {Object.entries(groupedIdeas).map(([status, statusIdeas]) => {
-          if (statusIdeas.length === 0) return null;
+        {/* Ideas by Planned Release Quarter */}
+        {Object.entries(groupedByRelease).map(([quarter, quarterIdeas]) => {
+          if (quarterIdeas.length === 0) return null;
           
           return (
-            <Box key={status} sx={{ mb: 4 }}>
-              <Typography variant="h6" gutterBottom sx={{ color: getStatusColor(status) }}>
-                {status === 'approved' && '✅'} 
-                {status === 'in_progress' && '🔄'} 
-                {status === 'completed' && '🎉'} 
-                {' '}{getStatusLabel(status)} ({statusIdeas.length})
+            <Box key={quarter} sx={{ mb: 4 }}>
+              <Typography variant="h5" gutterBottom sx={{ 
+                color: getReleaseColor(quarter),
+                fontWeight: 'bold',
+                borderBottom: `3px solid ${getReleaseColor(quarter)}`,
+                paddingBottom: 1,
+                marginBottom: 3
+              }}>
+                {quarter === 'Q1' && '🌱'} 
+                {quarter === 'Q2' && '🌸'} 
+                {quarter === 'Q3' && '☀️'} 
+                {quarter === 'Q4' && '🍂'} 
+                {quarter === 'Unscheduled' && '📋'} 
+                {' '}{getReleaseLabel(quarter)} ({quarterIdeas.length} items)
               </Typography>
               
               <Grid container spacing={2}>
-                {statusIdeas.map((idea, index) => (
+                {quarterIdeas.map((idea, index) => (
                   <Grid item xs={12} md={6} key={idea.id || index}>
                     <Card sx={{ 
-                      border: `2px solid ${getStatusColor(status)}`,
-                      borderRadius: 2
+                      border: `2px solid ${getReleaseColor(quarter)}`,
+                      borderRadius: 2,
+                      boxShadow: 3
                     }}>
                       <CardContent>
                         <Typography variant="h6" gutterBottom>
@@ -234,11 +274,32 @@ const RoadmapReportModal = ({ open, onClose, ideas, filters }) => {
                           {idea.promoted && (
                             <Chip label="Promoted" size="small" color="warning" />
                           )}
+                          {idea.plannedRelease && (
+                            <Chip 
+                              label={`Planned: ${idea.plannedRelease}`} 
+                              size="small" 
+                              color="secondary" 
+                              variant="filled"
+                            />
+                          )}
                         </Box>
                         
-                        <Typography variant="body2" color="text.secondary" sx={{ mb: 2 }}>
-                          {idea.description || 'No description available'}
-                        </Typography>
+                        {/* Prominent Description for Client Consumption */}
+                        <Box sx={{ 
+                          mb: 3, 
+                          p: 2, 
+                          backgroundColor: 'grey.50', 
+                          borderRadius: 1,
+                          borderLeft: `4px solid ${getReleaseColor(quarter)}`
+                        }}>
+                          <Typography variant="body1" sx={{ 
+                            fontWeight: 'medium',
+                            lineHeight: 1.6,
+                            color: 'text.primary'
+                          }}>
+                            {idea.description || 'No description available'}
+                          </Typography>
+                        </Box>
                         
                         {idea.features && idea.features.length > 0 && (
                           <Box sx={{ mb: 1 }}>

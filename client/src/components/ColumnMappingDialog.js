@@ -46,8 +46,11 @@ const ColumnMappingDialog = ({ open, onClose, fileData, onImportSuccess }) => {
     { key: 'authorName', label: 'Author Name', required: false },
     { key: 'authorEmail', label: 'Author Email', required: false },
     { key: 'status', label: 'Status', required: false },
+    { key: 'priority', label: 'Priority (high/medium/low)', required: false },
+    { key: 'voteCount', label: 'Vote Count', required: false },
     { key: 'estimatedEffort', label: 'Estimated Effort', required: false },
     { key: 'effortUnit', label: 'Effort Unit', required: false },
+    { key: 'notes', label: 'Notes (can map multiple columns)', required: false },
     { key: 'detailedRequirements', label: 'Technical Requirements', required: false },
     { key: 'features', label: 'Features (comma-separated)', required: false },
     { key: 'useCases', label: 'Use Cases (comma-separated)', required: false }
@@ -117,15 +120,43 @@ const ColumnMappingDialog = ({ open, onClose, fileData, onImportSuccess }) => {
     try {
       const mappedData = fileData.rows.map((row, index) => {
         const mappedRow = {};
+        const notesFields = [];
+        
         Object.entries(columnMapping).forEach(([sourceColumn, targetField]) => {
           if (targetField && targetField !== '') {
-            mappedRow[targetField] = row[sourceColumn] || '';
+            const value = row[sourceColumn] || '';
+            
+            if (targetField === 'notes') {
+              // Collect all fields mapped to notes for aggregation
+              if (value.trim()) {
+                notesFields.push(`${sourceColumn}: ${value.trim()}`);
+              }
+            } else if (targetField === 'voteCount') {
+              // Ensure vote count is a number
+              mappedRow[targetField] = parseInt(value) || 0;
+            } else if (targetField === 'priority') {
+              // Normalize priority values
+              const normalizedPriority = value.toLowerCase().trim();
+              if (['high', 'medium', 'low'].includes(normalizedPriority)) {
+                mappedRow[targetField] = normalizedPriority;
+              } else {
+                mappedRow[targetField] = 'medium'; // default
+              }
+            } else {
+              mappedRow[targetField] = value;
+            }
           }
         });
+        
+        // Aggregate notes fields
+        if (notesFields.length > 0) {
+          mappedRow.notes = notesFields.join('\n\n');
+        }
+        
         return mappedRow;
       });
 
-      const response = await axios.post('http://localhost:5000/api/admin/import/mapped-data', {
+      const response = await axios.post('/api/admin/import/mapped-data', {
         data: mappedData,
         mapping: columnMapping
       }, {

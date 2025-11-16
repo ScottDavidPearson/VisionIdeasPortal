@@ -31,6 +31,7 @@ import {
 } from '@mui/icons-material';
 import axios from 'axios';
 import ImageUploadTextField from './ImageUploadTextField';
+import TagInput from './TagInput';
 
 const NewIdeaDialog = ({ open, onClose, onIdeaCreated }) => {
   const [categories, setCategories] = useState([]);
@@ -43,7 +44,9 @@ const NewIdeaDialog = ({ open, onClose, onIdeaCreated }) => {
     source: '',
     priority: 'medium',
     authorName: '',
-    authorEmail: ''
+    authorEmail: '',
+    notes: '',
+    tags: []
   });
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
@@ -170,12 +173,10 @@ const NewIdeaDialog = ({ open, onClose, onIdeaCreated }) => {
     onDrop,
     accept: {
       'application/pdf': ['.pdf'],
-      'image/jpeg': ['.jpg', '.jpeg'],
-      'image/png': ['.png'],
-      'image/gif': ['.gif'],
-      'image/webp': ['.webp']
+      'image/*': ['.jpg', '.jpeg', '.png', '.gif', '.webp', '.bmp', '.tiff'],
+      'video/*': ['.mp4', '.avi', '.mov', '.wmv', '.webm', '.ogg', '.3gp', '.flv']
     },
-    maxSize: 10 * 1024 * 1024, // 10MB
+    maxSize: 50 * 1024 * 1024, // 50MB
     maxFiles: 5,
     disabled: uploading || loading
   });
@@ -322,6 +323,19 @@ const NewIdeaDialog = ({ open, onClose, onIdeaCreated }) => {
             disabled={loading}
           />
 
+          <TextField
+            fullWidth
+            label="Notes"
+            value={formData.notes}
+            onChange={handleChange('notes')}
+            margin="normal"
+            multiline
+            rows={3}
+            placeholder="Additional notes, links to external documents, references, etc. You can include URLs like https://example.com"
+            disabled={loading}
+            helperText="💡 Tip: You can add hyperlinks to external documents, references, or related resources"
+          />
+
           <FormControl fullWidth margin="normal" required>
             <InputLabel>Product Suite</InputLabel>
             <Select
@@ -405,6 +419,15 @@ const NewIdeaDialog = ({ open, onClose, onIdeaCreated }) => {
             disabled={loading}
           />
 
+          {/* Tags Section */}
+          <TagInput
+            value={formData.tags}
+            onChange={(newTags) => setFormData(prev => ({ ...prev, tags: newTags }))}
+            label="Tags"
+            placeholder="Add tags to categorize your idea..."
+            disabled={loading}
+          />
+
           <Typography variant="body2" color="text.secondary" sx={{ mt: 2 }}>
             Your idea will be reviewed by the team and you'll be notified of any updates.
           </Typography>
@@ -438,10 +461,10 @@ const NewIdeaDialog = ({ open, onClose, onIdeaCreated }) => {
                   }
                 </Typography>
                 <Typography variant="body2" color="text.secondary">
-                  Supports PDF documents and images (JPG, PNG, GIF, WebP)
+                  Supports PDF documents, images (JPG, PNG, GIF, WebP), and videos (MP4, AVI, MOV, WebM)
                 </Typography>
                 <Typography variant="body2" color="text.secondary">
-                  Maximum 5 files, 10MB each
+                  Maximum 5 files, 50MB each
                 </Typography>
               </Box>
             </Paper>

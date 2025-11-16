@@ -478,6 +478,14 @@ const RoadmapReportDialog = ({ open, onClose, ideas = [], currentFilters = {} })
                               color="secondary" 
                             />
                           )}
+                          {idea.plannedRelease && (
+                            <Chip 
+                              label={`${idea.plannedRelease}`} 
+                              size="small" 
+                              color="primary" 
+                              variant="filled"
+                            />
+                          )}
                         </Box>
                         {filters.includeEffortEstimates && idea.estimatedEffort && (
                           <Typography variant="caption" color="text.secondary">

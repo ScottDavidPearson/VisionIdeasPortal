@@ -1,0 +1,15 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>File Upload Test</title>
+</head>
+<body>
+    <h1>Direct File Upload Test</h1>
+    <form action="/api/debug/upload" method="post" enctype="multipart/form-data">
+        <input type="file" name="file" accept="image/*">
+        <button type="submit">Upload File</button>
+    </form>
+    
+    <h2>Results will appear in server console</h2>
+</body>
+</html>

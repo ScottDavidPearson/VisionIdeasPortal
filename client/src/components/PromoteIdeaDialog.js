@@ -13,6 +13,9 @@ import {
   FormControlLabel,
   Radio,
   TextField,
+  InputLabel,
+  Select,
+  MenuItem,
   Alert,
   CircularProgress,
   Divider,
@@ -35,6 +38,13 @@ const PromoteIdeaDialog = ({ idea, open, onClose, onIdeaPromoted }) => {
   const [error, setError] = useState('');
   const [success, setSuccess] = useState('');
   const [additionalNotes, setAdditionalNotes] = useState('');
+  const [plannedRelease, setPlannedRelease] = useState('');
+  const [azureProject, setAzureProject] = useState('VisionSuite'); // Default to VisionSuite
+  const [azureProjects, setAzureProjects] = useState([
+    { name: 'VisionSuite', state: 'wellFormed' },
+    { name: 'Vision Analytics', state: 'wellFormed' },
+    { name: 'Vision DNF', state: 'wellFormed' }
+  ]);
 
   const handlePromote = async () => {
     setPromoting(true);
@@ -45,6 +55,8 @@ const PromoteIdeaDialog = ({ idea, open, onClose, onIdeaPromoted }) => {
       const promotionData = {
         promotionType,
         additionalNotes,
+        plannedRelease,
+        azureProject,
         promotedAt: new Date().toISOString()
       };
 
@@ -58,7 +70,9 @@ const PromoteIdeaDialog = ({ idea, open, onClose, onIdeaPromoted }) => {
       );
 
       if (response.data.success) {
-        setSuccess(`Idea promoted as ${promotionType.toUpperCase()} successfully!`);
+        const workItemInfo = response.data.workItem ? 
+          ` Work item #${response.data.workItem.id} created in ${azureProject}.` : '';
+        setSuccess(`${response.data.message}${workItemInfo}`);
         
         // Generate and download CSV
         generateCSV(response.data.idea, promotionType);
@@ -67,10 +81,10 @@ const PromoteIdeaDialog = ({ idea, open, onClose, onIdeaPromoted }) => {
           onIdeaPromoted(response.data.idea);
         }
         
-        // Close dialog after 2 seconds
+        // Close dialog after 3 seconds to show work item ID
         setTimeout(() => {
           handleClose();
-        }, 2000);
+        }, 3000);
       } else {
         setError(response.data.error || 'Failed to promote idea');
       }
@@ -154,6 +168,7 @@ const PromoteIdeaDialog = ({ idea, open, onClose, onIdeaPromoted }) => {
   const handleClose = () => {
     setPromotionType('epic');
     setAdditionalNotes('');
+    setPlannedRelease('');
     setError('');
     setSuccess('');
     onClose();
@@ -278,6 +293,48 @@ const PromoteIdeaDialog = ({ idea, open, onClose, onIdeaPromoted }) => {
           </FormControl>
         </Box>
 
+        {/* Planned Release Quarter */}
+        <Box sx={{ mb: 3 }}>
+          <FormControl fullWidth>
+            <InputLabel>Planned Release Quarter *</InputLabel>
+            <Select
+              value={plannedRelease}
+              label="Planned Release Quarter *"
+              onChange={(e) => setPlannedRelease(e.target.value)}
+              disabled={promoting}
+              required
+            >
+              <MenuItem value="">
+                <em>Select Quarter</em>
+              </MenuItem>
+              <MenuItem value="Q1">Q1 - January to March</MenuItem>
+              <MenuItem value="Q2">Q2 - April to June</MenuItem>
+              <MenuItem value="Q3">Q3 - July to September</MenuItem>
+              <MenuItem value="Q4">Q4 - October to December</MenuItem>
+            </Select>
+          </FormControl>
+        </Box>
+
+        {/* Azure DevOps Project Selection */}
+        <Box sx={{ mb: 3 }}>
+          <FormControl fullWidth>
+            <InputLabel>Azure DevOps Project *</InputLabel>
+            <Select
+              value={azureProject}
+              label="Azure DevOps Project *"
+              onChange={(e) => setAzureProject(e.target.value)}
+              disabled={promoting}
+              required
+            >
+              {azureProjects.map((project) => (
+                <MenuItem key={project.name} value={project.name}>
+                  {project.name} ({project.state})
+                </MenuItem>
+              ))}
+            </Select>
+          </FormControl>
+        </Box>
+
         <Divider sx={{ my: 2 }} />
 
         {/* Additional Notes */}
@@ -316,7 +373,7 @@ const PromoteIdeaDialog = ({ idea, open, onClose, onIdeaPromoted }) => {
         <Button 
           onClick={handlePromote} 
           variant="contained" 
-          disabled={promoting}
+          disabled={promoting || !plannedRelease}
           startIcon={promoting ? <CircularProgress size={20} /> : <PromoteIcon />}
         >
           {promoting ? 'Promoting...' : `Promote as ${promotionType.toUpperCase()}`}

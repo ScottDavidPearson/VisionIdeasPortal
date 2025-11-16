@@ -1,4 +1,4 @@
-import React, { useState, useCallback } from 'react';
+import React, { useState, useCallback, useEffect } from 'react';
 import { useDropzone } from 'react-dropzone';
 import {
   Dialog,
@@ -27,10 +27,16 @@ import {
   PictureAsPdf as PdfIcon,
   Image as ImageIcon,
   Download as DownloadIcon,
-  Visibility as ViewIcon
+  Visibility as ViewIcon,
+  LocalOffer as TagIcon,
+  Edit as EditIcon,
+  Check as CheckIcon,
+  Clear as ClearIcon
 } from '@mui/icons-material';
 import LinkifiedText from './LinkifiedText';
 import CommentSection from './CommentSection';
+import AttachmentViewer from './AttachmentViewer';
+import TagInput from './TagInput';
 import axios from 'axios';
 
 const statusColors = {
@@ -51,22 +57,62 @@ const statusLabels = {
   'declined': 'Declined'
 };
 
-const IdeaDetailDialog = ({ idea, open, onClose, onVote }) => {
+const IdeaDetailDialog = ({ idea: initialIdea, open, onClose, onIdeaUpdated }) => {
+  const [idea, setIdea] = useState(initialIdea);
+  const [isEditing, setIsEditing] = useState(false);
+  const [isSaving, setIsSaving] = useState(false);
+  const [error, setError] = useState('');
+
+  // Update local state when prop changes
+  useEffect(() => {
+    setIdea(initialIdea);
+    setIsEditing(false);
+  }, [initialIdea]);
   const [voting, setVoting] = useState(false);
   const [uploading, setUploading] = useState(false);
   const [uploadProgress, setUploadProgress] = useState(0);
   const [uploadError, setUploadError] = useState('');
   const [uploadSuccess, setUploadSuccess] = useState('');
+  const [selectedAttachment, setSelectedAttachment] = useState(null);
+  const [showAttachmentViewer, setShowAttachmentViewer] = useState(false);
+
+  // Generate or get user ID for voting
+  const getUserId = () => {
+    let userId = localStorage.getItem('userId');
+    if (!userId) {
+      userId = 'user_' + Math.random().toString(36).substr(2, 9);
+      localStorage.setItem('userId', userId);
+    }
+    return userId;
+  };
 
   const handleVote = async () => {
-    if (!idea || voting) return;
+    if (!idea) return;
     
     setVoting(true);
     try {
-      await onVote(idea.id);
+      const userId = getUserId();
+      const response = await axios.post(`/api/ideas/${idea.id}/vote`, { userId });
+      if (response.data.success && onIdeaUpdated) {
+        // Update the idea with new vote count
+        const updatedIdea = { ...idea, voteCount: response.data.voteCount };
+        onIdeaUpdated(updatedIdea);
+      }
+    } catch (error) {
+      console.error('Error voting:', error);
     } finally {
       setVoting(false);
     }
+  };
+
+  const handleViewAttachment = (attachment) => {
+    setSelectedAttachment(attachment);
+    setShowAttachmentViewer(true);
+  };
+
+  const handleCloseAttachmentViewer = () => {
+    setShowAttachmentViewer(false);
+    setSelectedAttachment(null);
   };
 
   const onDrop = useCallback(async (acceptedFiles) => {
@@ -150,13 +196,54 @@ const IdeaDetailDialog = ({ idea, open, onClose, onVote }) => {
     });
   };
 
+  const handleTagChange = async (newTags) => {
+    try {
+      setIdea(prev => ({
+        ...prev,
+        tags: newTags
+      }));
+    } catch (error) {
+      console.error('Error updating tags:', error);
+      setError('Failed to update tags');
+    }
+  };
+
+  const handleSaveTags = async () => {
+    try {
+      setIsSaving(true);
+      setError('');
+      
+      const response = await axios.put(`/api/ideas/${idea.id}`, {
+        tags: idea.tags || []
+      });
+      
+      if (response.data.success) {
+        onIdeaUpdated(response.data.idea);
+        setIsEditing(false);
+      } else {
+        setError(response.data.error || 'Failed to update tags');
+      }
+    } catch (error) {
+      console.error('Error saving tags:', error);
+      setError('Failed to save tags. Please try again.');
+    } finally {
+      setIsSaving(false);
+    }
+  };
+
+  const handleCancelEdit = () => {
+    setIdea(initialIdea);
+    setIsEditing(false);
+    setError('');
+  };
+
   if (!idea) return null;
 
   return (
     <Dialog 
       open={open} 
-      onClose={onClose}
-      maxWidth="md"
+      onClose={isSaving ? undefined : onClose} 
+      maxWidth="md" 
       fullWidth
       PaperProps={{
         sx: { borderRadius: 2 }
@@ -210,6 +297,28 @@ const IdeaDetailDialog = ({ idea, open, onClose, onVote }) => {
                 />
               </Grid>
             )}
+            <Grid item>
+              <IconButton
+                onClick={handleVote}
+                disabled={voting}
+                color="primary"
+                size="small"
+                sx={{
+                  border: '1px solid',
+                  borderColor: 'primary.main',
+                  borderRadius: '16px',
+                  px: 1,
+                  '&:hover': {
+                    backgroundColor: 'primary.light'
+                  }
+                }}
+              >
+                <ThumbUpIcon fontSize="small" />
+                <Typography variant="caption" sx={{ ml: 0.5, fontWeight: 'bold' }}>
+                  {idea.voteCount || 0}
+                </Typography>
+              </IconButton>
+            </Grid>
           </Grid>
         </Box>
 
@@ -220,6 +329,24 @@ const IdeaDetailDialog = ({ idea, open, onClose, onVote }) => {
           </Typography>
           <LinkifiedText text={idea.description} />
         </Box>
+
+        {/* Notes */}
+        {idea.notes && idea.notes.trim() && (
+          <Box sx={{ mb: 3 }}>
+            <Typography variant="h6" gutterBottom>
+              Notes
+            </Typography>
+            <Box sx={{ 
+              p: 2, 
+              backgroundColor: 'grey.50', 
+              borderRadius: 1,
+              borderLeft: '3px solid',
+              borderLeftColor: 'info.main'
+            }}>
+              <LinkifiedText text={idea.notes} />
+            </Box>
+          </Box>
+        )}
 
         {/* Attachments Section */}
         {idea.attachments && idea.attachments.length > 0 && (
@@ -243,7 +370,7 @@ const IdeaDetailDialog = ({ idea, open, onClose, onVote }) => {
                     size="small"
                     variant="outlined"
                     startIcon={<ViewIcon />}
-                    onClick={() => window.open(attachment.url, '_blank')}
+                    onClick={() => handleViewAttachment(attachment)}
                   >
                     View
                   </Button>
@@ -389,6 +516,13 @@ const IdeaDetailDialog = ({ idea, open, onClose, onVote }) => {
           Close
         </Button>
       </DialogActions>
+
+      {/* Attachment Viewer Modal */}
+      <AttachmentViewer
+        open={showAttachmentViewer}
+        onClose={handleCloseAttachmentViewer}
+        attachment={selectedAttachment}
+      />
     </Dialog>
   );
 };

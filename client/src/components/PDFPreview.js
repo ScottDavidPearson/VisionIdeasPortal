@@ -17,7 +17,7 @@ pdfjs.GlobalWorkerOptions.workerSrc = `//unpkg.com/pdfjs-dist@${pdfjs.version}/b
 
 const PDFPreview = () => {
   const [pdfFiles, setPdfFiles] = useState([
-    { filename: 'sample.pdf', url: 'http://localhost:5000/uploads/sample.pdf' }
+    { filename: 'sample.pdf', url: '/uploads/sample.pdf' }
   ]);
   const [selectedPdf, setSelectedPdf] = useState('');
   const [numPages, setNumPages] = useState(null);

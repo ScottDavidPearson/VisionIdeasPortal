@@ -43,9 +43,12 @@ import {
   Category as SuiteIcon,
   ViewModule as ModuleIcon,
   Timeline as StatusIcon,
-  Source as SourceIcon
+  Source as SourceIcon,
+  CleaningServices as CleanupIcon,
+  Palette as ThemeIcon
 } from '@mui/icons-material';
 import axios from 'axios';
+import ThemeSettings from './ThemeSettings';
 
 function TabPanel({ children, value, index, ...other }) {
   return (
@@ -140,7 +143,7 @@ const SettingsDialog = ({ open, onClose, onSettingsUpdated }) => {
     setSuccess('');
 
     try {
-      const response = await axios.post('http://localhost:5000/api/admin/cleanup-categories', {}, {
+      const response = await axios.post('/api/admin/cleanup-categories', {}, {
         headers: {
           'Authorization': `Bearer ${localStorage.getItem('adminToken')}`
         }
@@ -381,6 +384,166 @@ const SettingsDialog = ({ open, onClose, onSettingsUpdated }) => {
     }
   };
 
+  const fetchAzureProjects = async () => {
+    try {
+      setError('');
+      setSuccess('Fetching projects...');
+      
+      console.log('🔍 Fetching Azure DevOps projects...');
+      console.log('Config:', config.azureDevOps);
+      
+      const response = await axios.post('/api/admin/azure/projects', config.azureDevOps, {
+        headers: {
+          'Authorization': `Bearer ${localStorage.getItem('adminToken')}`
+        },
+        timeout: 15000 // 15 second timeout
+      });
+
+      console.log('✅ Projects response:', response.data);
+
+      if (response.data.success) {
+        const projectsList = response.data.projects.map(p => `• ${p.name} (${p.state})`).join('\n');
+        setSuccess(`Found ${response.data.projects.length} projects:\n${projectsList}`);
+      } else {
+        setError(response.data.error || 'Failed to fetch projects');
+      }
+    } catch (error) {
+      console.error('❌ Fetch projects error:', error);
+      if (error.code === 'ECONNABORTED') {
+        setError('Request timed out - Azure DevOps may be slow to respond');
+      } else if (error.response) {
+        setError(`Server error: ${error.response.status} - ${error.response.data?.error || error.message}`);
+      } else if (error.request) {
+        setError('Network error - could not reach server');
+      } else {
+        setError(`Failed to fetch projects: ${error.message}`);
+      }
+    }
+  };
+
+  const fetchWorkItemFields = async () => {
+    try {
+      setError('');
+      setSuccess('Fetching work item type definition...');
+      
+      const requestData = {
+        ...config.azureDevOps,
+        project: config.azureDevOps.project || 'VisionSuite',
+        workItemType: 'Feature'
+      };
+      
+      const response = await axios.post('/api/admin/azure/workitemtype', requestData, {
+        headers: {
+          'Authorization': `Bearer ${localStorage.getItem('adminToken')}`
+        },
+        timeout: 15000
+      });
+
+      if (response.data.success) {
+        const fieldsList = response.data.requiredFields.map(f => {
+          let allowedValuesText = '';
+          if (f.allowedValues && Array.isArray(f.allowedValues) && f.allowedValues.length > 0) {
+            allowedValuesText = ` [${f.allowedValues.join(', ')}]`;
+          } else if (f.allowedValues && typeof f.allowedValues === 'string' && f.allowedValues !== 'No restrictions') {
+            allowedValuesText = ` [${f.allowedValues}]`;
+          }
+          return `• ${f.name} (${f.referenceName}) - ${f.type}${allowedValuesText}${f.defaultValue ? ` (default: ${f.defaultValue})` : ''}`;
+        }).join('\n');
+        setSuccess(`Required fields for ${response.data.workItemType}:\n${fieldsList}`);
+      } else {
+        setError(response.data.error || 'Failed to fetch work item type definition');
+      }
+    } catch (error) {
+      console.error('❌ Fetch work item type error:', error);
+      setError(`Failed to fetch work item type: ${error.response?.data?.error || error.message}`);
+    }
+  };
+
+  const fetchBucketField = async () => {
+    try {
+      setError('');
+      setSuccess('Fetching Custom.Bucket field definition...');
+      
+      const requestData = {
+        ...config.azureDevOps,
+        fieldName: 'Custom.Bucket'
+      };
+      
+      const response = await axios.post('/api/admin/azure/field', requestData, {
+        headers: {
+          'Authorization': `Bearer ${localStorage.getItem('adminToken')}`
+        },
+        timeout: 15000
+      });
+
+      if (response.data.success) {
+        const field = response.data.field;
+        let fieldInfo = `Field: ${field.name} (${field.referenceName})\nType: ${field.type}`;
+        
+        if (field.isPicklist) {
+          fieldInfo += `\nPicklist ID: ${field.picklistId}`;
+        }
+        
+        if (field.allowedValues && Array.isArray(field.allowedValues)) {
+          fieldInfo += `\nAllowed Values: ${field.allowedValues.join(', ')}`;
+        }
+        
+        if (field.defaultValue) {
+          fieldInfo += `\nDefault Value: ${field.defaultValue}`;
+        }
+        
+        if (field.description) {
+          fieldInfo += `\nDescription: ${field.description}`;
+        }
+        
+        setSuccess(`Custom.Bucket Field Details:\n${fieldInfo}`);
+      } else {
+        setError(response.data.error || 'Failed to fetch bucket field definition');
+      }
+    } catch (error) {
+      console.error('❌ Fetch bucket field error:', error);
+      setError(`Failed to fetch bucket field: ${error.response?.data?.error || error.message}`);
+    }
+  };
+
+  const fetchBucketPicklist = async () => {
+    try {
+      setError('');
+      setSuccess('Fetching Custom.Bucket picklist values...');
+      
+      const requestData = {
+        ...config.azureDevOps,
+        picklistId: 'ebe6fd9a-8b17-4c21-9e10-ce0a2e642dcb'
+      };
+      
+      const response = await axios.post('/api/admin/azure/picklist', requestData, {
+        headers: {
+          'Authorization': `Bearer ${localStorage.getItem('adminToken')}`
+        },
+        timeout: 15000
+      });
+
+      if (response.data.success) {
+        const picklist = response.data.picklist;
+        let picklistInfo = `Picklist: ${picklist.name}\nID: ${picklist.id}\nType: ${picklist.type}`;
+        
+        if (picklist.items && picklist.items.length > 0) {
+          const values = picklist.items.map(item => item.value || item).join(', ');
+          picklistInfo += `\nAllowed Values: ${values}`;
+        } else {
+          picklistInfo += '\nNo items found in picklist';
+        }
+        
+        setSuccess(`Custom.Bucket Picklist:\n${picklistInfo}`);
+      } else {
+        setError(response.data.error || 'Failed to fetch bucket picklist');
+      }
+    } catch (error) {
+      console.error('❌ Fetch bucket picklist error:', error);
+      setError(`Failed to fetch bucket picklist: ${error.response?.data?.error || error.message}`);
+    }
+  };
+
   const handleAddSource = async () => {
     if (!newSource.trim()) return;
     
@@ -534,6 +697,11 @@ const SettingsDialog = ({ open, onClose, onSettingsUpdated }) => {
               icon={<AzureIcon />}
               iconPosition="start"
             />
+            <Tab 
+              label="Theme" 
+              icon={<ThemeIcon />}
+              iconPosition="start"
+            />
           </Tabs>
         </Box>
 
@@ -643,6 +811,26 @@ const SettingsDialog = ({ open, onClose, onSettingsUpdated }) => {
                           </ListItem>
                         ))}
                       </List>
+                      
+                      {/* Category Cleanup Section */}
+                      <Box sx={{ mt: 3, pt: 2, borderTop: 1, borderColor: 'divider' }}>
+                        <Typography variant="subtitle2" gutterBottom>
+                          Category Maintenance
+                        </Typography>
+                        <Typography variant="body2" color="text.secondary" sx={{ mb: 2 }}>
+                          Clean up ideas that have invalid categories based on your current Product Suite configuration.
+                        </Typography>
+                        <Button
+                          variant="outlined"
+                          color="warning"
+                          startIcon={<CleanupIcon />}
+                          onClick={handleCleanupCategories}
+                          disabled={cleaningUp}
+                          size="small"
+                        >
+                          {cleaningUp ? 'Cleaning Up...' : 'Clean Up Invalid Categories'}
+                        </Button>
+                      </Box>
                     </CardContent>
                   </Card>
                 </Grid>
@@ -936,7 +1124,7 @@ const SettingsDialog = ({ open, onClose, onSettingsUpdated }) => {
                   </Grid>
 
                   {config.azureDevOps?.enabled && (
-                    <Box sx={{ mt: 3 }}>
+                    <Box sx={{ mt: 3, display: 'flex', gap: 2, flexWrap: 'wrap' }}>
                       <Button
                         variant="outlined"
                         onClick={testAzureConnection}
@@ -944,10 +1132,47 @@ const SettingsDialog = ({ open, onClose, onSettingsUpdated }) => {
                       >
                         Test Connection
                       </Button>
+                      <Button
+                        variant="outlined"
+                        onClick={fetchAzureProjects}
+                        startIcon={<AzureIcon />}
+                        color="secondary"
+                      >
+                        Fetch Projects
+                      </Button>
+                      <Button
+                        variant="outlined"
+                        onClick={fetchWorkItemFields}
+                        startIcon={<AzureIcon />}
+                        color="warning"
+                      >
+                        Check Required Fields
+                      </Button>
+                      <Button
+                        variant="outlined"
+                        onClick={fetchBucketField}
+                        startIcon={<AzureIcon />}
+                        color="error"
+                      >
+                        Check Bucket Field
+                      </Button>
+                      <Button
+                        variant="outlined"
+                        onClick={fetchBucketPicklist}
+                        startIcon={<AzureIcon />}
+                        color="success"
+                      >
+                        Get Bucket Values
+                      </Button>
                     </Box>
                   )}
                 </CardContent>
               </Card>
+            </TabPanel>
+
+            {/* Theme Tab */}
+            <TabPanel value={tabValue} index={4}>
+              <ThemeSettings />
             </TabPanel>
           </>
         )}

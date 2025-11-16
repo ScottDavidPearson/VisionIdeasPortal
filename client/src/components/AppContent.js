@@ -20,7 +20,8 @@ import {
   IconButton,
   Badge,
   Fab,
-  CircularProgress
+  CircularProgress,
+  Stack
 } from '@mui/material';
 import {
   Lightbulb as IdeaIcon,
@@ -47,10 +48,11 @@ import IdeaDetailDialog from './IdeaDetailDialog';
 import ProductTeamDashboard from './ProductTeamDashboard';
 import LinkTest from './LinkTest';
 import CommentModal from './CommentModal';
+import TagFilter from './TagFilter';
 
 // Configure axios to use ngrok for remote access
-const API_BASE_URL = 'https://viscidly-superexplicit-nell.ngrok-free.dev';
-axios.defaults.baseURL = API_BASE_URL;
+// const API_BASE_URL = 'https://viscidly-superexplicit-nell.ngrok-free.dev';
+// axios.defaults.baseURL = API_BASE_URL;
 
 const AppContent = () => {
   const { user, isAuthenticated, logout, isAdmin } = useAuth();
@@ -61,6 +63,8 @@ const AppContent = () => {
   const [categories, setCategories] = useState([]);
   const [selectedCategory, setSelectedCategory] = useState('');
   const [selectedStatus, setSelectedStatus] = useState('');
+  const [selectedTags, setSelectedTags] = useState([]);
+  const [searchQuery, setSearchQuery] = useState('');
   const [showNewIdeaDialog, setShowNewIdeaDialog] = useState(false);
   const [selectedIdea, setSelectedIdea] = useState(null);
   const [showAdminDashboard, setShowAdminDashboard] = useState(false);
@@ -95,17 +99,23 @@ const AppContent = () => {
     try {
       const response = await axios.get('/api/ideas');
       if (response.data.success) {
-        let filteredIdeas = response.data.ideas;
-        
-        if (selectedCategory) {
-          filteredIdeas = filteredIdeas.filter(idea => idea.category === selectedCategory);
-        }
-        
-        if (selectedStatus) {
-          filteredIdeas = filteredIdeas.filter(idea => idea.status === selectedStatus);
-        }
-        
-        setIdeas(filteredIdeas);
+        const filteredIdeas = ideas.filter(idea => {
+          const matchesSearch = !searchQuery || 
+            idea.title.toLowerCase().includes(searchQuery.toLowerCase()) || 
+            idea.description.toLowerCase().includes(searchQuery.toLowerCase());
+          
+          const matchesCategory = !selectedCategory || idea.category === selectedCategory;
+          const matchesStatus = !selectedStatus || idea.status === selectedStatus;
+          
+          const matchesTags = selectedTags.length === 0 || 
+            (idea.tags && selectedTags.every(tag => 
+              idea.tags.some(ideaTag => 
+                ideaTag.toLowerCase() === tag.toLowerCase()
+              )
+            ));
+          
+          return matchesSearch && matchesCategory && matchesStatus && matchesTags;
+        });
 
         // Fetch comment counts for all ideas
         const ideaIds = filteredIdeas.map(idea => idea.id);
@@ -231,7 +241,7 @@ const AppContent = () => {
         {/* Filters */}
         <Paper sx={{ p: 2, mb: 3 }}>
           <Grid container spacing={2} alignItems="center">
-            <Grid item xs={12} sm={4}>
+            <Grid item xs={12} md={3}>
               <FormControl fullWidth size="small">
                 <InputLabel>Filter by Category</InputLabel>
                 <Select
@@ -248,7 +258,7 @@ const AppContent = () => {
                 </Select>
               </FormControl>
             </Grid>
-            <Grid item xs={12} sm={4}>
+            <Grid item xs={12} md={3}>
               <FormControl fullWidth size="small">
                 <InputLabel>Filter by Status</InputLabel>
                 <Select
@@ -265,17 +275,25 @@ const AppContent = () => {
                 </Select>
               </FormControl>
             </Grid>
-            <Grid item xs={12} sm={4}>
+            <Grid item xs={12} md={4}>
+              <TagFilter 
+                selectedTags={selectedTags}
+                onChange={setSelectedTags}
+              />
+            </Grid>
+            <Grid item xs={12} md={2}>
               <Button
                 variant="outlined"
                 startIcon={<ClearIcon />}
                 onClick={() => {
                   setSelectedCategory('');
                   setSelectedStatus('');
+                  setSelectedTags([]);
                 }}
                 fullWidth
+                size="large"
               >
-                Clear Filters
+                Clear All
               </Button>
             </Grid>
           </Grid>
@@ -300,10 +318,71 @@ const AppContent = () => {
                 onClick={() => setSelectedIdea(idea)}
               >
                 <CardContent sx={{ flexGrow: 1 }}>
-                  <Typography gutterBottom variant="h6" component="h2">
+                  <Typography variant="h6" component="h3" gutterBottom noWrap>
                     {idea.title}
                   </Typography>
                   
+                  <Box sx={{ display: 'flex', alignItems: 'center', mb: 1, flexWrap: 'wrap', gap: 0.5 }}>
+                    <Chip 
+                      label={statusLabels[idea.status] || idea.status} 
+                      color={statusColors[idea.status] || 'default'}
+                      size="small"
+                      sx={{ mr: 0.5 }}
+                    />
+                    <Typography variant="caption" color="text.secondary" sx={{ mr: 1 }}>
+                      {idea.category}
+                    </Typography>
+                    
+                    {/* Tags */}
+                    {idea.tags && idea.tags.length > 0 && (
+                      <Box sx={{ display: 'flex', flexWrap: 'wrap', gap: 0.5, mt: 0.5 }}>
+                        {idea.tags.slice(0, 2).map((tag, index) => (
+                          <Chip
+                            key={index}
+                            label={tag}
+                            size="small"
+                            variant="outlined"
+                            sx={{
+                              height: '20px',
+                              '& .MuiChip-label': {
+                                px: 0.75,
+                                fontSize: '0.65rem',
+                              },
+                              '&:hover': {
+                                backgroundColor: 'primary.light',
+                                color: 'primary.contrastText',
+                              },
+                            }}
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              if (!selectedTags.includes(tag)) {
+                                setSelectedTags([...selectedTags, tag]);
+                              }
+                            }}
+                          />
+                        ))}
+                        {idea.tags.length > 2 && (
+                          <Chip
+                            label={`+${idea.tags.length - 2} more`}
+                            size="small"
+                            variant="outlined"
+                            sx={{
+                              height: '20px',
+                              '& .MuiChip-label': {
+                                px: 0.75,
+                                fontSize: '0.65rem',
+                              },
+                            }}
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              setSelectedIdea(idea);
+                            }}
+                          />
+                        )}
+                      </Box>
+                    )}
+                  </Box>
+
                   <Box sx={{ mb: 2 }}>
                     <LinkifiedText 
                       text={idea.description.length > 100 
@@ -313,35 +392,21 @@ const AppContent = () => {
                     />
                   </Box>
 
-                  {/* Metadata chips */}
-                  <Box sx={{ display: 'flex', flexWrap: 'wrap', gap: 1, mb: 2 }}>
+                  {/* Priority Chip - Always show with default medium */}
+                  <Chip 
+                    label={`${(idea.priority || 'medium').charAt(0).toUpperCase() + (idea.priority || 'medium').slice(1)} Priority`}
+                    size="small"
+                    color={(idea.priority || 'medium') === 'high' ? 'error' : (idea.priority || 'medium') === 'low' ? 'default' : 'warning'}
+                    sx={{ fontWeight: 'bold' }}
+                  />
+                  {idea.attachments && idea.attachments.length > 0 && (
                     <Chip 
-                      label={statusLabels[idea.status] || idea.status}
+                      label={`${idea.attachments.length} files`}
                       size="small"
-                      color={statusColors[idea.status] || 'default'}
-                    />
-                    <Chip 
-                      label={idea.source}
-                      size="small"
-                      color="secondary"
+                      icon={<AttachIcon />}
                       variant="outlined"
                     />
-                    {/* Priority Chip - Always show with default medium */}
-                    <Chip 
-                      label={`${(idea.priority || 'medium').charAt(0).toUpperCase() + (idea.priority || 'medium').slice(1)} Priority`}
-                      size="small"
-                      color={(idea.priority || 'medium') === 'high' ? 'error' : (idea.priority || 'medium') === 'low' ? 'default' : 'warning'}
-                      sx={{ fontWeight: 'bold' }}
-                    />
-                    {idea.attachments && idea.attachments.length > 0 && (
-                      <Chip 
-                        label={`${idea.attachments.length} files`}
-                        size="small"
-                        icon={<AttachIcon />}
-                        variant="outlined"
-                      />
-                    )}
-                  </Box>
+                  )}
                 </CardContent>
 
                 <CardActions sx={{ justifyContent: 'space-between', px: 2, pb: 2 }}>
@@ -391,18 +456,29 @@ const AppContent = () => {
                     </IconButton>
                   </Box>
 
-                  <Box sx={{ display: 'flex', alignItems: 'center', gap: 2, color: 'text.secondary' }}>
-                    <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.5 }}>
-                      <PersonIcon fontSize="small" />
-                      <Typography variant="caption">
-                        {idea.authorName || 'Anonymous'}
-                      </Typography>
-                    </Box>
-                    <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.5 }}>
-                      <CalendarIcon fontSize="small" />
-                      <Typography variant="caption">
-                        {new Date(idea.createdAt).toLocaleDateString()}
-                      </Typography>
+                  <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mt: 'auto', pt: 1 }}>
+                    <Box sx={{ display: 'flex', flexWrap: 'wrap', gap: 0.5 }}>
+                      <Chip 
+                        icon={<PersonIcon fontSize="small" />} 
+                        label={idea.authorName || 'Anonymous'} 
+                        size="small" 
+                        variant="outlined" 
+                        sx={{ 
+                          '& .MuiChip-label': {
+                            maxWidth: '80px',
+                            overflow: 'hidden',
+                            textOverflow: 'ellipsis',
+                            whiteSpace: 'nowrap',
+                          }
+                        }}
+                        title={idea.authorName || 'Anonymous'}
+                      />
+                      <Chip 
+                        icon={<CalendarIcon fontSize="small" />} 
+                        label={new Date(idea.createdAt).toLocaleDateString()} 
+                        size="small" 
+                        variant="outlined" 
+                      />
                     </Box>
                   </Box>
                 </CardActions>

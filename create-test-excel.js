@@ -37,5 +37,6 @@ XLSX.utils.book_append_sheet(workbook, worksheet, 'Ideas');
 XLSX.writeFile(workbook, 'test-ideas-import.xlsx');
 
 console.log('✅ Excel test file created: test-ideas-import.xlsx');
-console.log('📁 Location:', __dirname);
+console.log('📁 Location:', __dirnmaybe look at the directory?
+  ame);
 console.log('📊 Contains', testData.length, 'sample ideas for testing');

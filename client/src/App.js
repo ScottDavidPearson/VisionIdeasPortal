@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
+import { DragDropContext } from '@hello-pangea/dnd';
 import { 
-  ThemeProvider, 
   createTheme,
   AppBar,
   Toolbar,
@@ -39,7 +39,10 @@ import {
   Refresh as RefreshIcon,
   Comment as CommentIcon,
   Logout as LogoutIcon,
-  AdminPanelSettings as AdminIcon
+  AdminPanelSettings as AdminIcon,
+  Search as SearchIcon,
+  ViewModule as CardViewIcon,
+  ViewList as ListViewIcon
 } from '@mui/icons-material';
 import axios from 'axios';
 import NewIdeaDialog from './components/NewIdeaDialog';
@@ -49,22 +52,14 @@ import ProductTeamDashboard from './components/ProductTeamDashboard';
 import LinkTest from './components/LinkTest';
 import CommentModal from './components/CommentModal';
 import LoginDialog from './components/LoginDialog';
-import GraphExplorerAuth from './components/GraphExplorerAuth';
+import { ThemeProvider } from './contexts/ThemeContext';
+import ThemeToggle from './components/ThemeToggle';
 
 // Configure axios to use ngrok for remote access
-const API_BASE_URL = 'https://viscidly-superexplicit-nell.ngrok-free.dev';
-axios.defaults.baseURL = API_BASE_URL;
+// const API_BASE_URL = 'https://viscidly-superexplicit-nell.ngrok-free.dev';
+// axios.defaults.baseURL = API_BASE_URL;
 
-const theme = createTheme({
-  palette: {
-    primary: {
-      main: '#1976d2',
-    },
-    secondary: {
-      main: '#dc004e',
-    },
-  },
-});
+// Theme is now managed by our custom ThemeProvider
 
 function App() {
   const [ideas, setIdeas] = useState([]);
@@ -74,6 +69,7 @@ function App() {
   const [selectedCategory, setSelectedCategory] = useState('');
   const [selectedStatus, setSelectedStatus] = useState('');
   const [selectedSource, setSelectedSource] = useState('');
+  const [searchQuery, setSearchQuery] = useState('');
   const [showNewIdeaDialog, setShowNewIdeaDialog] = useState(false);
   const [selectedIdea, setSelectedIdea] = useState(null);
   const [showAdminDashboard, setShowAdminDashboard] = useState(false);
@@ -83,9 +79,9 @@ function App() {
   const [showCommentModal, setShowCommentModal] = useState(false);
   const [adminUser, setAdminUser] = useState(null);
   const [showLoginDialog, setShowLoginDialog] = useState(false);
-  const [graphUser, setGraphUser] = useState(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
+  const [viewMode, setViewMode] = useState('card'); // 'card' or 'list'
 
   const statusLabels = {
     'submitted': 'Submitted',
@@ -127,6 +123,15 @@ function App() {
         
         if (selectedSource) {
           filteredIdeas = filteredIdeas.filter(idea => idea.source === selectedSource);
+        }
+        
+        if (searchQuery) {
+          filteredIdeas = filteredIdeas.filter(idea => 
+            idea.title.toLowerCase().includes(searchQuery.toLowerCase()) ||
+            idea.description.toLowerCase().includes(searchQuery.toLowerCase()) ||
+            (idea.authorName && idea.authorName.toLowerCase().includes(searchQuery.toLowerCase())) ||
+            (idea.category && idea.category.toLowerCase().includes(searchQuery.toLowerCase()))
+          );
         }
         
         setIdeas(filteredIdeas);
@@ -193,11 +198,24 @@ function App() {
     }
   };
 
+  // Generate or get user ID for voting
+  const getUserId = () => {
+    let userId = localStorage.getItem('userId');
+    if (!userId) {
+      userId = 'user_' + Math.random().toString(36).substr(2, 9);
+      localStorage.setItem('userId', userId);
+    }
+    return userId;
+  };
+
   const handleVote = async (ideaId) => {
     try {
-      const response = await axios.post(`/api/ideas/${ideaId}/vote`);
+      const userId = getUserId();
+      const response = await axios.post(`/api/ideas/${ideaId}/vote`, { userId });
       if (response.data.success) {
         fetchIdeas();
+        // Show feedback message
+        console.log(response.data.message);
       }
     } catch (error) {
       console.error('Error voting:', error);
@@ -210,16 +228,10 @@ function App() {
   };
 
   const handleSwitchToAdmin = () => {
-    // Check if user is already logged in as admin
-    const savedUser = localStorage.getItem('adminUser');
-    const savedToken = localStorage.getItem('adminToken');
-    
-    if (savedUser && savedToken) {
-      setAdminUser(JSON.parse(savedUser));
-      setShowAdminDashboard(true);
-    } else {
-      setShowLoginDialog(true);
-    }
+    console.log('🔐 Admin button clicked');
+    // Always show login dialog for now - don't trust saved credentials
+    console.log('🔑 Showing login dialog (not using saved credentials for now)');
+    setShowLoginDialog(true);
   };
 
   const handleSwitchToPublic = () => {
@@ -227,6 +239,7 @@ function App() {
   };
 
   const handleLoginSuccess = (user) => {
+    console.log('✅ Login successful, setting up admin dashboard for:', user);
     setAdminUser(user);
     setShowAdminDashboard(true);
     setShowLoginDialog(false);
@@ -244,19 +257,32 @@ function App() {
     const savedUser = localStorage.getItem('adminUser');
     const savedToken = localStorage.getItem('adminToken');
     
+    console.log('🔍 Checking localStorage on app load:', { 
+      hasUser: !!savedUser, 
+      hasToken: !!savedToken,
+      user: savedUser ? JSON.parse(savedUser) : null 
+    });
+    
     if (savedUser && savedToken) {
+      console.log('✅ Found saved admin credentials, setting adminUser');
       setAdminUser(JSON.parse(savedUser));
+      // Don't automatically show dashboard - let user click the button
+    } else {
+      console.log('❌ No saved admin credentials found');
+      // Clean up any partial data
+      localStorage.removeItem('adminUser');
+      localStorage.removeItem('adminToken');
     }
   }, []);
 
   useEffect(() => {
     // Only fetch data when filters change, not on initial load
-    if (selectedCategory !== '' || selectedStatus !== '' || selectedSource !== '') {
+    if (selectedCategory !== '' || selectedStatus !== '' || selectedSource !== '' || searchQuery !== '') {
       fetchIdeas();
       fetchCategories();
       fetchSources();
     }
-  }, [selectedCategory, selectedStatus, selectedSource]);
+  }, [selectedCategory, selectedStatus, selectedSource, searchQuery]);
 
   // Separate effect for initial data loading
   useEffect(() => {
@@ -282,7 +308,7 @@ function App() {
 
   if (showLinkTest) {
     return (
-      <ThemeProvider theme={theme}>
+      <ThemeProvider>
         <LinkTest />
       </ThemeProvider>
     );
@@ -291,20 +317,25 @@ function App() {
   // Show admin dashboard
   if (showAdminDashboard && adminUser) {
     return (
-      <ThemeProvider theme={theme}>
-        <ProductTeamDashboard 
-          user={adminUser}
-          onLogout={handleAdminLogout}
-          onSwitchToPublic={handleSwitchToPublic}
-        />
+      <ThemeProvider>
+        <DragDropContext onDragEnd={(result) => {
+          // Handle drag end if needed
+          console.log('Drag ended', result);
+        }}>
+          <ProductTeamDashboard 
+            user={adminUser}
+            onLogout={handleAdminLogout}
+            onSwitchToPublic={handleSwitchToPublic}
+          />
+        </DragDropContext>
       </ThemeProvider>
     );
   }
 
   // Main public portal view
   return (
-    <ThemeProvider theme={theme}>
-      <Box sx={{ flexGrow: 1, minHeight: '100vh', backgroundColor: '#f5f5f5' }}>
+    <ThemeProvider>
+      <Box sx={{ flexGrow: 1, minHeight: '100vh', backgroundColor: 'background.default' }}>
         {/* Header */}
         <AppBar position="static" elevation={2}>
           <Toolbar>
@@ -312,6 +343,27 @@ function App() {
             <Typography variant="h6" component="div" sx={{ flexGrow: 1 }}>
               Vision Ideas Portal
             </Typography>
+            
+            {/* View Toggle Buttons */}
+            <Box sx={{ display: 'flex', mr: 2 }}>
+              <IconButton
+                color={viewMode === 'card' ? 'secondary' : 'inherit'}
+                onClick={() => setViewMode('card')}
+                title="Card View"
+              >
+                <CardViewIcon />
+              </IconButton>
+              <IconButton
+                color={viewMode === 'list' ? 'secondary' : 'inherit'}
+                onClick={() => setViewMode('list')}
+                title="List View"
+              >
+                <ListViewIcon />
+              </IconButton>
+            </Box>
+            
+            {/* Theme Toggle */}
+            <ThemeToggle />
             
             {/* Admin button */}
             <Button
@@ -331,39 +383,7 @@ function App() {
             Share Your Ideas
           </Typography>
 
-          {/* Authentication Test Section */}
-          <Paper sx={{ p: 3, mb: 3, bgcolor: '#f8f9fa' }}>
-            <Typography variant="h6" gutterBottom>
-              🧪 Authentication Testing
-            </Typography>
-            <Grid container spacing={3}>
-              <Grid item xs={12} md={6}>
-                <Typography variant="subtitle1" gutterBottom>
-                  Option 1: Microsoft Graph Explorer (No IT Approval)
-                </Typography>
-                <GraphExplorerAuth onUserChange={setGraphUser} />
-              </Grid>
-              <Grid item xs={12} md={6}>
-                <Typography variant="subtitle1" gutterBottom>
-                  Option 2: Admin Dashboard (JWT)
-                </Typography>
-                <Box>
-                  <Typography variant="body2" color="text.secondary" sx={{ mb: 2 }}>
-                    Use admin credentials: <strong>admin / admin123</strong>
-                  </Typography>
-                  <Button
-                    variant="contained"
-                    startIcon={<AdminIcon />}
-                    onClick={handleSwitchToAdmin}
-                    fullWidth
-                  >
-                    Admin Dashboard Login
-                  </Button>
-                </Box>
-              </Grid>
-            </Grid>
-          </Paper>
-          
+
           {/* Error Display */}
           {error && (
             <Box sx={{ mb: 3 }}>
@@ -383,7 +403,21 @@ function App() {
           {/* Filters */}
           <Paper sx={{ p: 2, mb: 3 }}>
             <Grid container spacing={2} alignItems="center">
-              <Grid item xs={12} sm={3}>
+              <Grid item xs={12} sm={6} md={3}>
+                <TextField
+                  fullWidth
+                  size="small"
+                  placeholder="Search ideas..."
+                  value={searchQuery}
+                  onChange={(e) => setSearchQuery(e.target.value)}
+                  InputProps={{
+                    startAdornment: (
+                      <SearchIcon sx={{ color: 'text.secondary', mr: 1 }} />
+                    ),
+                  }}
+                />
+              </Grid>
+              <Grid item xs={12} sm={6} md={2}>
                 <FormControl fullWidth size="small">
                   <InputLabel>Filter by Category</InputLabel>
                   <Select
@@ -400,7 +434,7 @@ function App() {
                   </Select>
                 </FormControl>
               </Grid>
-              <Grid item xs={12} sm={3}>
+              <Grid item xs={12} sm={6} md={2}>
                 <FormControl fullWidth size="small">
                   <InputLabel>Filter by Status</InputLabel>
                   <Select
@@ -417,7 +451,7 @@ function App() {
                   </Select>
                 </FormControl>
               </Grid>
-              <Grid item xs={12} sm={3}>
+              <Grid item xs={12} sm={6} md={2}>
                 <FormControl fullWidth size="small">
                   <InputLabel>Filter by Source</InputLabel>
                   <Select
@@ -434,7 +468,7 @@ function App() {
                   </Select>
                 </FormControl>
               </Grid>
-              <Grid item xs={12} sm={3}>
+              <Grid item xs={12} sm={6} md={3}>
                 <Button
                   variant="outlined"
                   startIcon={<ClearIcon />}
@@ -442,6 +476,7 @@ function App() {
                     setSelectedCategory('');
                     setSelectedStatus('');
                     setSelectedSource('');
+                    setSearchQuery('');
                     // Fetch all ideas when filters are cleared
                     fetchIdeas();
                   }}
@@ -453,10 +488,12 @@ function App() {
             </Grid>
           </Paper>
 
-          {/* Ideas Grid */}
-          <Grid container spacing={3}>
-            {ideas.map((idea) => (
-              <Grid item xs={12} md={6} lg={4} key={idea.id}>
+          {/* Ideas Display - Card or List View */}
+          {viewMode === 'card' ? (
+            /* Card View */
+            <Grid container spacing={3}>
+              {ideas.map((idea) => (
+                <Grid item xs={12} md={6} lg={4} key={idea.id}>
                 <Card 
                   sx={{ 
                     height: '100%', 
@@ -503,6 +540,30 @@ function App() {
                       />
                     </Box>
 
+                    {/* Notes Display */}
+                    {idea.notes && idea.notes.trim() && (
+                      <Box sx={{ 
+                        mb: 2, 
+                        p: 1.5, 
+                        backgroundColor: 'action.hover', 
+                        borderRadius: 1,
+                        borderLeft: '3px solid',
+                        borderLeftColor: 'info.main'
+                      }}>
+                        <Typography variant="caption" color="info.main" sx={{ fontWeight: 'bold', display: 'block', mb: 0.5 }}>
+                          📝 Notes:
+                        </Typography>
+                        <Typography variant="body2" color="text.secondary" sx={{ fontSize: '0.85rem' }}>
+                          <LinkifiedText 
+                            text={idea.notes.length > 80 
+                              ? `${idea.notes.substring(0, 80)}...` 
+                              : idea.notes
+                            }
+                          />
+                        </Typography>
+                      </Box>
+                    )}
+
                     {/* Metadata chips */}
                     <Box sx={{ display: 'flex', flexWrap: 'wrap', gap: 1, mb: 2 }}>
                       <Chip 
@@ -523,13 +584,77 @@ function App() {
                         color={(idea.priority || 'medium') === 'high' ? 'error' : (idea.priority || 'medium') === 'low' ? 'default' : 'warning'}
                         sx={{ fontWeight: 'bold' }}
                       />
+                      {/* Scheduled Quarter Chip */}
+                      {idea.promoted && idea.plannedRelease && (
+                        <Chip 
+                          label={`Scheduled: ${idea.plannedRelease}`}
+                          size="small"
+                          color="success"
+                          variant="filled"
+                          sx={{ 
+                            fontWeight: 'bold',
+                            backgroundColor: 'success.main',
+                            color: 'success.contrastText',
+                            '& .MuiChip-label': {
+                              fontSize: '0.75rem'
+                            }
+                          }}
+                        />
+                      )}
                       {idea.attachments && idea.attachments.length > 0 && (
                         <Chip 
                           label={`${idea.attachments.length} files`}
                           size="small"
                           icon={<AttachIcon />}
                           variant="outlined"
+                          onClick={(e) => {
+                            e.stopPropagation(); // Prevent card click
+                            setSelectedIdea(idea); // Open idea detail dialog
+                          }}
+                          sx={{ 
+                            cursor: 'pointer',
+                            '&:hover': {
+                              backgroundColor: 'primary.light',
+                              color: 'primary.contrastText'
+                            }
+                          }}
                         />
+                      )}
+                      {/* Tags Display */}
+                      {idea.tags && idea.tags.length > 0 && (
+                        <Box sx={{ display: 'flex', flexWrap: 'wrap', gap: 0.5, mt: 1 }}>
+                          {idea.tags.slice(0, 3).map((tag, index) => (
+                            <Chip
+                              key={index}
+                              label={tag}
+                              size="small"
+                              variant="outlined"
+                              color="primary"
+                              sx={{ 
+                                fontSize: '0.7rem',
+                                height: '20px',
+                                '& .MuiChip-label': {
+                                  px: 1
+                                }
+                              }}
+                            />
+                          ))}
+                          {idea.tags.length > 3 && (
+                            <Chip
+                              label={`+${idea.tags.length - 3} more`}
+                              size="small"
+                              variant="outlined"
+                              color="default"
+                              sx={{ 
+                                fontSize: '0.7rem',
+                                height: '20px',
+                                '& .MuiChip-label': {
+                                  px: 1
+                                }
+                              }}
+                            />
+                          )}
+                        </Box>
                       )}
                     </Box>
                   </CardContent>
@@ -598,9 +723,187 @@ function App() {
                     </Box>
                   </CardActions>
                 </Card>
-              </Grid>
-            ))}
-          </Grid>
+                </Grid>
+              ))}
+            </Grid>
+          ) : (
+            /* List View */
+            <Box>
+              {ideas.map((idea) => (
+                <Paper 
+                  key={idea.id}
+                  sx={{ 
+                    p: 2, 
+                    mb: 2, 
+                    cursor: 'pointer',
+                    '&:hover': {
+                      boxShadow: 4,
+                      backgroundColor: 'action.hover'
+                    }
+                  }}
+                  onClick={() => setSelectedIdea(idea)}
+                >
+                  <Grid container spacing={2} alignItems="center">
+                    {/* Title and Category */}
+                    <Grid item xs={12} md={4}>
+                      <Typography variant="h6" gutterBottom>
+                        {idea.title}
+                      </Typography>
+                      {idea.category && (
+                        <Chip 
+                          label={idea.category} 
+                          size="small" 
+                          color="primary" 
+                          sx={{ mb: 1 }}
+                        />
+                      )}
+                    </Grid>
+                    
+                    {/* Description */}
+                    <Grid item xs={12} md={5}>
+                      <Typography variant="body2" color="text.secondary">
+                        <LinkifiedText 
+                          text={idea.description.length > 150 
+                            ? `${idea.description.substring(0, 150)}...` 
+                            : idea.description
+                          }
+                        />
+                      </Typography>
+                      
+                      {/* Notes Display in List View */}
+                      {idea.notes && idea.notes.trim() && (
+                        <Box sx={{ 
+                          mt: 1, 
+                          p: 1, 
+                          backgroundColor: 'action.hover', 
+                          borderRadius: 0.5,
+                          borderLeft: '2px solid',
+                          borderLeftColor: 'info.main'
+                        }}>
+                          <Typography variant="caption" color="info.main" sx={{ fontWeight: 'bold', display: 'block' }}>
+                            📝 Notes:
+                          </Typography>
+                          <Typography variant="caption" color="text.secondary">
+                            <LinkifiedText 
+                              text={idea.notes.length > 60 
+                                ? `${idea.notes.substring(0, 60)}...` 
+                                : idea.notes
+                              }
+                            />
+                          </Typography>
+                        </Box>
+                      )}
+                    </Grid>
+                    
+                    {/* Metadata and Actions */}
+                    <Grid item xs={12} md={3}>
+                      <Box sx={{ display: 'flex', flexWrap: 'wrap', gap: 1, mb: 1 }}>
+                        <Chip 
+                          label={statusLabels[idea.status] || idea.status}
+                          size="small"
+                          color={statusColors[idea.status] || 'default'}
+                        />
+                        <Chip 
+                          label={idea.source}
+                          size="small"
+                          color="secondary"
+                          variant="outlined"
+                        />
+                        {idea.attachments && idea.attachments.length > 0 && (
+                          <Chip 
+                            label={`${idea.attachments.length} files`}
+                            size="small"
+                            icon={<AttachIcon />}
+                            variant="outlined"
+                          />
+                        )}
+                        {/* Scheduled Quarter Chip in List View */}
+                        {idea.promoted && idea.plannedRelease && (
+                          <Chip 
+                            label={`Scheduled: ${idea.plannedRelease}`}
+                            size="small"
+                            color="success"
+                            variant="filled"
+                            sx={{ 
+                              fontWeight: 'bold',
+                              backgroundColor: 'success.main',
+                              color: 'success.contrastText'
+                            }}
+                          />
+                        )}
+                        {/* Tags Display in List View */}
+                        {idea.tags && idea.tags.length > 0 && (
+                          idea.tags.slice(0, 2).map((tag, index) => (
+                            <Chip
+                              key={index}
+                              label={tag}
+                              size="small"
+                              variant="outlined"
+                              color="primary"
+                              sx={{ 
+                                fontSize: '0.7rem',
+                                height: '20px'
+                              }}
+                            />
+                          ))
+                        )}
+                        {idea.tags && idea.tags.length > 2 && (
+                          <Chip
+                            label={`+${idea.tags.length - 2}`}
+                            size="small"
+                            variant="outlined"
+                            color="default"
+                            sx={{ 
+                              fontSize: '0.7rem',
+                              height: '20px'
+                            }}
+                          />
+                        )}
+                      </Box>
+                      
+                      <Box sx={{ display: 'flex', alignItems: 'center', gap: 2, justifyContent: 'space-between' }}>
+                        <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+                          <IconButton 
+                            size="small" 
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              handleVote(idea.id);
+                            }}
+                            color="primary"
+                          >
+                            <Badge badgeContent={idea.voteCount || 0} color="primary">
+                              <ThumbUpIcon />
+                            </Badge>
+                          </IconButton>
+                          
+                          <IconButton
+                            size="small"
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              setCommentModalIdea(idea);
+                              setShowCommentModal(true);
+                            }}
+                            color="secondary"
+                          >
+                            <Badge badgeContent={commentCounts[idea.id] || 0} color="secondary">
+                              <CommentIcon />
+                            </Badge>
+                          </IconButton>
+                        </Box>
+                        
+                        <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, color: 'text.secondary' }}>
+                          <PersonIcon fontSize="small" />
+                          <Typography variant="caption">
+                            {idea.authorName || 'Anonymous'}
+                          </Typography>
+                        </Box>
+                      </Box>
+                    </Grid>
+                  </Grid>
+                </Paper>
+              ))}
+            </Box>
+          )}
 
           {/* Add Idea FAB */}
           <Fab
@@ -624,7 +927,7 @@ function App() {
           idea={selectedIdea}
           open={!!selectedIdea}
           onClose={() => setSelectedIdea(null)}
-          onVote={handleVote}
+          onIdeaUpdated={() => fetchIdeas()}
         />
 
         <CommentModal
@@ -642,7 +945,10 @@ function App() {
 
         <LoginDialog
           open={showLoginDialog}
-          onClose={() => setShowLoginDialog(false)}
+          onClose={() => {
+            console.log('🚪 Login dialog closed');
+            setShowLoginDialog(false);
+          }}
           onLoginSuccess={handleLoginSuccess}
         />
       </Box>

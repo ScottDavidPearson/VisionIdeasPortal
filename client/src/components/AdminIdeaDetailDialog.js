@@ -1,4 +1,5 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
+import { useDropzone } from 'react-dropzone';
 import {
   Dialog,
   DialogTitle,
@@ -19,7 +20,8 @@ import {
   Alert,
   CircularProgress,
   Paper,
-  Stack
+  Stack,
+  LinearProgress
 } from '@mui/material';
 import {
   Close as CloseIcon,
@@ -28,6 +30,11 @@ import {
   Category as CategoryIcon,
   AttachFile as AttachIcon,
   Save as SaveIcon,
+  CloudUpload as CloudUploadIcon,
+  PictureAsPdf as PdfIcon,
+  Image as ImageIcon,
+  Download as DownloadIcon,
+  Visibility as ViewIcon,
   Edit as EditIcon,
   Cancel as CancelIcon,
   AccessTime as TimeIcon,
@@ -36,6 +43,8 @@ import {
 } from '@mui/icons-material';
 import LinkifiedText from './LinkifiedText';
 import CommentSection from './CommentSection';
+import AttachmentViewer from './AttachmentViewer';
+import TagInput from './TagInput';
 import axios from 'axios';
 
 const statusColors = {
@@ -78,7 +87,9 @@ const AdminIdeaDetailDialog = ({ open, onClose, idea, onIdeaUpdated, onDelete, s
     effortUnit: idea?.effortUnit || 'story_points',
     detailedRequirements: idea?.detailedRequirements || '',
     features: idea?.features || [],
-    useCases: idea?.useCases || []
+    useCases: idea?.useCases || [],
+    notes: idea?.notes || '',
+    tags: idea?.tags || []
   });
 
   const [internalData, setInternalData] = useState({
@@ -91,6 +102,16 @@ const AdminIdeaDetailDialog = ({ open, onClose, idea, onIdeaUpdated, onDelete, s
 
   const [newFeature, setNewFeature] = useState('');
   const [newUseCase, setNewUseCase] = useState('');
+  
+  // File upload state
+  const [uploading, setUploading] = useState(false);
+  const [uploadProgress, setUploadProgress] = useState(0);
+  const [uploadError, setUploadError] = useState('');
+  const [uploadSuccess, setUploadSuccess] = useState('');
+  
+  // Attachment viewer state
+  const [selectedAttachment, setSelectedAttachment] = useState(null);
+  const [showAttachmentViewer, setShowAttachmentViewer] = useState(false);
 
   // Fetch categories when dialog opens
   useEffect(() => {
@@ -133,12 +154,21 @@ const AdminIdeaDetailDialog = ({ open, onClose, idea, onIdeaUpdated, onDelete, s
 
   const fetchCategories = async () => {
     try {
-      const response = await axios.get('http://localhost:5000/api/categories');
+      console.log('🔍 Fetching categories for dropdown...');
+      const token = localStorage.getItem('adminToken');
+      const response = await axios.get('/api/categories', {
+        headers: token ? { 'Authorization': `Bearer ${token}` } : {}
+      });
+      console.log('📋 Categories response:', response.data);
       if (response.data.success) {
         setCategories(response.data.categories);
+        console.log('✅ Categories loaded:', response.data.categories.length, 'categories');
+      } else {
+        console.error('❌ Failed to fetch categories:', response.data.error);
       }
     } catch (error) {
-      console.error('Failed to fetch categories:', error);
+      console.error('❌ Error fetching categories:', error);
+      console.error('❌ Error details:', error.response?.data);
     }
   };
 
@@ -183,6 +213,95 @@ const AdminIdeaDetailDialog = ({ open, onClose, idea, onIdeaUpdated, onDelete, s
     }));
   };
 
+  const handleViewAttachment = (attachment) => {
+    setSelectedAttachment(attachment);
+    setShowAttachmentViewer(true);
+  };
+
+  const handleCloseAttachmentViewer = () => {
+    setShowAttachmentViewer(false);
+    setSelectedAttachment(null);
+  };
+
+  // File upload functionality
+  const onDrop = useCallback(async (acceptedFiles) => {
+    console.log('🚀 onDrop function called with files:', acceptedFiles);
+    if (!idea || acceptedFiles.length === 0) {
+      console.log('❌ onDrop early return - idea:', !!idea, 'files length:', acceptedFiles.length);
+      return;
+    }
+
+    console.log('✅ Starting upload process...');
+    setUploading(true);
+    setUploadProgress(0);
+    setUploadError('');
+    setUploadSuccess('');
+
+    try {
+      const formData = new FormData();
+      acceptedFiles.forEach((file) => {
+        formData.append('files', file);
+      });
+
+      const response = await axios.post(`/api/ideas/${idea.id}/attachments`, formData, {
+        headers: {
+          'Content-Type': 'multipart/form-data',
+          'Authorization': `Bearer ${localStorage.getItem('adminToken')}`
+        },
+        onUploadProgress: (progressEvent) => {
+          const percentCompleted = Math.round(
+            (progressEvent.loaded * 100) / progressEvent.total
+          );
+          setUploadProgress(percentCompleted);
+        },
+      });
+
+      if (response.data.success) {
+        setUploadSuccess(`${acceptedFiles.length} file(s) uploaded successfully`);
+        // Update the idea with new attachments
+        if (onIdeaUpdated && response.data.idea) {
+          onIdeaUpdated(response.data.idea);
+        }
+      } else {
+        setUploadError(response.data.error || 'Upload failed');
+      }
+    } catch (error) {
+      console.error('Upload error:', error);
+      setUploadError(error.response?.data?.error || 'Upload failed');
+    } finally {
+      setUploading(false);
+      setUploadProgress(0);
+    }
+  }, [idea, onIdeaUpdated]);
+
+  const { getRootProps, getInputProps, isDragActive } = useDropzone({
+    onDrop: (acceptedFiles, rejectedFiles) => {
+      console.log('🎬 Dropzone onDrop triggered');
+      console.log('🎬 Accepted files:', acceptedFiles);
+      console.log('🎬 Rejected files:', rejectedFiles);
+      if (rejectedFiles.length > 0) {
+        rejectedFiles.forEach(rejection => {
+          console.log('❌ Rejected file:', rejection.file.name, 'Errors:', rejection.errors);
+        });
+      }
+      onDrop(acceptedFiles);
+    },
+    accept: {
+      'application/pdf': ['.pdf'],
+      'image/*': ['.jpg', '.jpeg', '.png', '.gif', '.webp', '.bmp', '.tiff'],
+      'video/*': ['.mp4', '.avi', '.mov', '.wmv', '.webm', '.ogg', '.3gp', '.flv']
+    },
+    maxFiles: 5,
+    maxSize: 50 * 1024 * 1024, // 50MB
+    disabled: uploading,
+    onDropAccepted: (files) => {
+      console.log('✅ Files accepted by dropzone:', files);
+    },
+    onDropRejected: (rejections) => {
+      console.log('❌ Files rejected by dropzone:', rejections);
+    }
+  });
+
   const handleSave = async () => {
     setSaving(true);
     setError('');
@@ -197,7 +316,15 @@ const AdminIdeaDetailDialog = ({ open, onClose, idea, onIdeaUpdated, onDelete, s
         authorName: editedIdea.authorName,
         authorEmail: editedIdea.authorEmail,
         source: editedIdea.source,
-        priority: editedIdea.priority
+        priority: editedIdea.priority,
+        notes: editedIdea.notes,
+        tags: editedIdea.tags || [],
+        // Include internal data fields
+        estimatedEffort: internalData.estimatedEffort,
+        effortUnit: internalData.effortUnit,
+        detailedRequirements: internalData.detailedRequirements,
+        features: internalData.features,
+        useCases: internalData.useCases
       };
 
       console.log('Saving idea with data:', updateData);
@@ -207,7 +334,7 @@ const AdminIdeaDetailDialog = ({ open, onClose, idea, onIdeaUpdated, onDelete, s
       console.log('Current editedIdea.source:', editedIdea.source);
       console.log('Current editedIdea.priority:', editedIdea.priority);
 
-      const response = await axios.put(`http://localhost:5000/api/admin/ideas/${idea.id}`, 
+      const response = await axios.put(`/api/admin/ideas/${idea.id}`, 
         updateData,
         {
           headers: {
@@ -619,6 +746,20 @@ const AdminIdeaDetailDialog = ({ open, onClose, idea, onIdeaUpdated, onDelete, s
                     icon={<AttachIcon />}
                     variant="outlined"
                     size="medium"
+                    onClick={() => {
+                      // Scroll to attachments section
+                      const attachmentsSection = document.getElementById('attachments-section');
+                      if (attachmentsSection) {
+                        attachmentsSection.scrollIntoView({ behavior: 'smooth', block: 'start' });
+                      }
+                    }}
+                    sx={{ 
+                      cursor: 'pointer',
+                      '&:hover': {
+                        backgroundColor: 'primary.light',
+                        color: 'primary.contrastText'
+                      }
+                    }}
                   />
                 )}
               </Stack>
@@ -629,7 +770,80 @@ const AdminIdeaDetailDialog = ({ open, onClose, idea, onIdeaUpdated, onDelete, s
               <Typography variant="subtitle1" gutterBottom sx={{ fontWeight: 'bold' }}>
                 Description
               </Typography>
-              <LinkifiedText text={idea.description} />
+              {editing ? (
+                <TextField
+                  fullWidth
+                  multiline
+                  rows={4}
+                  value={editedIdea.description}
+                  onChange={(e) => setEditedIdea(prev => ({ ...prev, description: e.target.value }))}
+                  placeholder="Describe the idea in detail..."
+                  variant="outlined"
+                />
+              ) : (
+                <LinkifiedText text={idea.description} />
+              )}
+            </Box>
+
+            {/* Tags */}
+            <Box sx={{ mb: 3 }}>
+              <Typography variant="subtitle1" gutterBottom sx={{ fontWeight: 'bold' }}>
+                Tags
+              </Typography>
+              {editing ? (
+                <TagInput
+                  value={editedIdea.tags || []}
+                  onChange={(tags) => setEditedIdea(prev => ({ ...prev, tags }))}
+                  placeholder="Add tags to categorize this idea..."
+                />
+              ) : (
+                <Box sx={{ display: 'flex', flexWrap: 'wrap', gap: 0.5 }}>
+                  {editedIdea.tags?.length > 0 ? (
+                    editedIdea.tags.map((tag, index) => (
+                      <Chip key={index} label={tag} size="small" />
+                    ))
+                  ) : (
+                    <Typography variant="body2" color="text.secondary">
+                      No tags added
+                    </Typography>
+                  )}
+                </Box>
+              )}
+            </Box>
+
+            {/* Notes */}
+            <Box sx={{ mb: 3 }}>
+              <Typography variant="subtitle1" gutterBottom sx={{ fontWeight: 'bold' }}>
+                Notes
+              </Typography>
+              {editing ? (
+                <TextField
+                  fullWidth
+                  multiline
+                  rows={3}
+                  value={editedIdea.notes}
+                  onChange={(e) => setEditedIdea(prev => ({ ...prev, notes: e.target.value }))}
+                  placeholder="Additional notes, links to external documents, references, etc. You can include URLs like https://example.com"
+                  variant="outlined"
+                  helperText="💡 Tip: You can add hyperlinks to external documents, references, or related resources"
+                />
+              ) : (
+                idea.notes && idea.notes.trim() ? (
+                  <Box sx={{ 
+                    p: 2, 
+                    backgroundColor: 'grey.50', 
+                    borderRadius: 1,
+                    borderLeft: '3px solid',
+                    borderLeftColor: 'info.main'
+                  }}>
+                    <LinkifiedText text={idea.notes} />
+                  </Box>
+                ) : (
+                  <Typography variant="body2" color="text.secondary" sx={{ fontStyle: 'italic' }}>
+                    No notes available
+                  </Typography>
+                )
+              )}
             </Box>
 
             {/* Author and Date Info */}
@@ -708,6 +922,122 @@ const AdminIdeaDetailDialog = ({ open, onClose, idea, onIdeaUpdated, onDelete, s
                 {idea.voteCount || 0} votes
               </Typography>
             </Paper>
+          </Grid>
+
+          {/* Current Attachments Section - Full Width */}
+          {idea.attachments && idea.attachments.length > 0 && (
+            <Grid item xs={12} id="attachments-section">
+              <Box sx={{ mb: 3 }}>
+                <Typography variant="h6" gutterBottom>
+                  Attachments ({idea.attachments.length})
+                </Typography>
+                <Stack spacing={2}>
+                  {idea.attachments.map((attachment, index) => (
+                    <Paper key={index} sx={{ p: 2, display: 'flex', alignItems: 'center', gap: 2 }}>
+                      {attachment.mimetype?.startsWith('image/') ? (
+                        <ImageIcon color="primary" sx={{ fontSize: 32 }} />
+                      ) : (
+                        <PdfIcon color="error" sx={{ fontSize: 32 }} />
+                      )}
+                      <Box flexGrow={1}>
+                        <Typography variant="body1" sx={{ fontWeight: 'medium' }}>
+                          {attachment.originalName}
+                        </Typography>
+                        <Typography variant="body2" color="text.secondary">
+                          {attachment.mimetype} • {(attachment.size / 1024 / 1024).toFixed(1)} MB
+                        </Typography>
+                      </Box>
+                      <Button
+                        size="small"
+                        variant="outlined"
+                        startIcon={<ViewIcon />}
+                        onClick={() => handleViewAttachment(attachment)}
+                        sx={{ mr: 1 }}
+                      >
+                        View
+                      </Button>
+                      <Button
+                        size="small"
+                        variant="outlined"
+                        startIcon={<DownloadIcon />}
+                        onClick={() => {
+                          const link = document.createElement('a');
+                          link.href = attachment.url;
+                          link.download = attachment.originalName;
+                          document.body.appendChild(link);
+                          link.click();
+                          document.body.removeChild(link);
+                        }}
+                      >
+                        Download
+                      </Button>
+                    </Paper>
+                  ))}
+                </Stack>
+              </Box>
+            </Grid>
+          )}
+
+          {/* Add Attachments Section - Full Width */}
+          <Grid item xs={12}>
+            <Box sx={{ mb: 3 }}>
+              <Typography variant="h6" gutterBottom>
+                Add New Attachments
+              </Typography>
+              
+              {uploadError && (
+                <Alert severity="error" sx={{ mb: 2 }}>
+                  {uploadError}
+                </Alert>
+              )}
+              
+              {uploadSuccess && (
+                <Alert severity="success" sx={{ mb: 2 }}>
+                  {uploadSuccess}
+                </Alert>
+              )}
+
+              <Paper
+                {...getRootProps()}
+                sx={{
+                  p: 3,
+                  border: '2px dashed',
+                  borderColor: isDragActive ? 'primary.main' : 'grey.300',
+                  backgroundColor: isDragActive ? 'primary.50' : 'background.paper',
+                  cursor: uploading ? 'not-allowed' : 'pointer',
+                  '&:hover': {
+                    borderColor: 'primary.main',
+                    backgroundColor: 'primary.50'
+                  }
+                }}
+              >
+                <input {...getInputProps()} />
+                <Box textAlign="center">
+                  <CloudUploadIcon sx={{ fontSize: 48, color: 'primary.main', mb: 1 }} />
+                  <Typography variant="body1" gutterBottom>
+                    {isDragActive
+                      ? 'Drop files here...'
+                      : 'Drag & drop files here, or click to select'
+                    }
+                  </Typography>
+                  <Typography variant="body2" color="text.secondary">
+                    Supports PDF documents, images (JPG, PNG, GIF, WebP), and videos (MP4, AVI, MOV, WebM)
+                  </Typography>
+                  <Typography variant="body2" color="text.secondary">
+                    Maximum 5 files, 50MB each
+                  </Typography>
+                </Box>
+              </Paper>
+
+              {uploading && (
+                <Box sx={{ mt: 2 }}>
+                  <Typography variant="body2" color="text.secondary" gutterBottom>
+                    Uploading... {uploadProgress}%
+                  </Typography>
+                  <LinearProgress variant="determinate" value={uploadProgress} />
+                </Box>
+              )}
+            </Box>
           </Grid>
 
           {/* Right Column - Internal Team Data */}
@@ -880,6 +1210,7 @@ const AdminIdeaDetailDialog = ({ open, onClose, idea, onIdeaUpdated, onDelete, s
           </Grid>
         </Grid>
 
+
         {/* Comments Section */}
         <CommentSection ideaId={idea.id} title="Comments & Discussion" />
       </DialogContent>
@@ -965,6 +1296,13 @@ const AdminIdeaDetailDialog = ({ open, onClose, idea, onIdeaUpdated, onDelete, s
           </Button>
         </DialogActions>
       </Dialog>
+
+      {/* Attachment Viewer Modal */}
+      <AttachmentViewer
+        open={showAttachmentViewer}
+        onClose={handleCloseAttachmentViewer}
+        attachment={selectedAttachment}
+      />
     </Dialog>
   );
 };

@@ -50,8 +50,17 @@ const LoginDialog = ({ open, onClose, onLoginSuccess }) => {
     setError('');
 
     try {
-      const response = await axios.post('/api/auth/login', credentials);
+      console.log('🔐 Attempting login with credentials:', credentials.username);
+      const response = await axios.post('/api/auth/login', credentials, {
+        withCredentials: true,
+        headers: {
+          'Content-Type': 'application/json',
+          'Cache-Control': 'no-cache'
+        },
+        timeout: 10000
+      });
       
+      console.log('✅ Login API response:', response.data);
       if (response.data.success) {
         // Store token in localStorage
         localStorage.setItem('adminToken', response.data.token);
@@ -63,8 +72,21 @@ const LoginDialog = ({ open, onClose, onLoginSuccess }) => {
         setError(response.data.error || 'Login failed');
       }
     } catch (error) {
-      console.error('Login error:', error);
-      setError(error.response?.data?.error || 'Login failed. Please try again.');
+      console.error('❌ Login error:', error);
+      console.error('❌ Error details:', {
+        status: error.response?.status,
+        statusText: error.response?.statusText,
+        data: error.response?.data,
+        message: error.message
+      });
+      
+      if (error.response?.status === 401) {
+        setError('Authentication failed. Please enter the ngrok credentials (jestais/secure123) in the popup, then try again.');
+      } else if (error.code === 'ECONNABORTED') {
+        setError('Request timeout. Please check your connection and try again.');
+      } else {
+        setError(error.response?.data?.error || error.message || 'Login failed. Please try again.');
+      }
     } finally {
       setLoading(false);
     }

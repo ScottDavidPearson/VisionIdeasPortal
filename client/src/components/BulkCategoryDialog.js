@@ -44,7 +44,7 @@ const BulkCategoryDialog = ({ open, onClose, selectedIdeas, onSuccess }) => {
 
   const fetchCategories = async () => {
     try {
-      const response = await axios.get('http://localhost:5000/api/categories');
+      const response = await axios.get('/api/categories');
       if (response.data.success) {
         setCategories(response.data.categories);
       }
@@ -64,7 +64,7 @@ const BulkCategoryDialog = ({ open, onClose, selectedIdeas, onSuccess }) => {
 
     try {
       const updatePromises = selectedIdeas.map(idea => 
-        axios.put(`http://localhost:5000/api/admin/ideas/${idea.id}`, {
+        axios.put(`/api/admin/ideas/${idea.id}`, {
           ...idea,
           category: selectedCategory
         }, {

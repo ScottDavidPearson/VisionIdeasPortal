@@ -2,11 +2,13 @@ const express = require('express');
 const cors = require('cors');
 const helmet = require('helmet');
 const path = require('path');
+const fs = require('fs');
 const multer = require('multer');
 const { v4: uuidv4 } = require('uuid');
 const mime = require('mime-types');
 const jwt = require('jsonwebtoken');
 const bcrypt = require('bcrypt');
+const axios = require('axios');
 const XLSX = require('xlsx');
 const DocumentStore = require('./DocumentStore');
 require('dotenv').config();
@@ -37,7 +39,24 @@ process.on('SIGTERM', () => {
 console.log('🔒 Process event handlers installed - server should be more stable');
 
 const app = express();
-const PORT = process.env.PORT || 5000;
+const PORT = process.env.PORT || 5002;
+
+// Enable CORS for all routes - permissive for development
+app.use((req, res, next) => {
+  res.header('Access-Control-Allow-Origin', '*');
+  res.header('Access-Control-Allow-Methods', 'GET, POST, PUT, DELETE, OPTIONS');
+  res.header('Access-Control-Allow-Headers', 'Origin, X-Requested-With, Content-Type, Accept, Authorization');
+  
+  // Handle preflight
+  if (req.method === 'OPTIONS') {
+    return res.status(200).end();
+  }
+  
+  next();
+});
+
+// Parse JSON bodies
+app.use(express.json());
 const JWT_SECRET = process.env.JWT_SECRET || 'vision-ideas-portal-secret-key';
 
 // Admin users (in production, this would be in a database with hashed passwords)
@@ -214,16 +233,10 @@ let votes = {
 // Security middleware
 app.use(helmet());
 app.use(cors({
-  origin: [
-    'http://localhost:3000',
-    'http://localhost:3001',
-    'http://127.0.0.1:3000',
-    'http://127.0.0.1:3001',
-    /^http:\/\/192\.168\.\d+\.\d+:3001$/,  // Local network access
-    /^http:\/\/172\.16\.\d+\.\d+:3001$/,   // Docker/VM networks
-    /^http:\/\/10\.\d+\.\d+\.\d+:3001$/    // Private networks
-  ],
-  credentials: true
+  origin: '*',
+  credentials: true,
+  methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
+  allowedHeaders: ['Content-Type', 'Authorization']
 }));
 
 // Add permissive CSP for development
@@ -245,38 +258,67 @@ app.use((req, res, next) => {
   next();
 });
 
-// Serve static files from uploads directory
-app.use('/uploads', express.static(path.join(__dirname, 'uploads')));
-
-// Serve React build files
+// Serve static files from React build
 app.use(express.static(path.join(__dirname, 'client/build')));
+
+// Serve test upload page
+app.get('/test-upload', (req, res) => {
+  res.sendFile(path.join(__dirname, 'test-upload.html'));
+});
+
+// Serve uploaded files
+app.use('/uploads', express.static(path.join(__dirname, 'data/uploads')));
+
+// Ensure uploads directory exists
+const uploadsDir = path.join(__dirname, 'data/uploads');
+if (!fs.existsSync(uploadsDir)) {
+  fs.mkdirSync(uploadsDir, { recursive: true });
+  console.log('📁 Created uploads directory:', uploadsDir);
+}
 
 // Configure multer for file uploads
 const storage = multer.diskStorage({
   destination: (req, file, cb) => {
-    cb(null, 'uploads/');
+    console.log('📁 Multer destination called for file:', file.originalname);
+    cb(null, 'data/uploads/');
   },
   filename: (req, file, cb) => {
-    const uniqueName = `${uuidv4()}.${mime.extension(file.mimetype)}`;
+    const extension = mime.extension(file.mimetype) || 'bin';
+    const uniqueName = `${uuidv4()}.${extension}`;
+    console.log('📝 Generated filename:', uniqueName, 'for', file.originalname);
     cb(null, uniqueName);
   }
 });
 
-// File filter for PDFs and images
+// File filter for PDFs, images, and videos
 const fileFilter = (req, file, cb) => {
   const allowedTypes = [
+    // PDFs
     'application/pdf',
+    // Images
     'image/jpeg',
     'image/jpg',
     'image/png',
     'image/gif',
-    'image/webp'
+    'image/webp',
+    'image/bmp',
+    'image/tiff',
+    // Videos
+    'video/mp4',
+    'video/mpeg',
+    'video/quicktime',
+    'video/x-msvideo', // .avi
+    'video/x-ms-wmv',  // .wmv
+    'video/webm',
+    'video/ogg',
+    'video/3gpp',      // .3gp
+    'video/x-flv'      // .flv
   ];
 
   if (allowedTypes.includes(file.mimetype)) {
     cb(null, true);
   } else {
-    cb(new Error('Invalid file type. Only PDFs and images are allowed.'), false);
+    cb(new Error(`Invalid file type: ${file.mimetype}. Only PDFs, images, and videos are allowed.`), false);
   }
 };
 
@@ -284,7 +326,7 @@ const upload = multer({
   storage: storage,
   fileFilter: fileFilter,
   limits: {
-    fileSize: 10 * 1024 * 1024, // 10MB limit
+    fileSize: 50 * 1024 * 1024, // 50MB limit (increased for videos)
     files: 5 // Maximum 5 files per upload
   }
 });
@@ -517,7 +559,7 @@ app.get('/api/auth/verify', authenticateToken, (req, res) => {
 // Get all ideas
 app.get('/api/ideas', async (req, res) => {
   try {
-    const { category, status, source, search, sortBy = 'newest' } = req.query;
+    const { category, status, source, search, tags, sortBy = 'newest' } = req.query;
     
     let filteredIdeas = await docStore.getAllIdeas();
     
@@ -534,6 +576,15 @@ app.get('/api/ideas', async (req, res) => {
     // Filter by source
     if (source) {
       filteredIdeas = filteredIdeas.filter(idea => idea.source === source);
+    }
+    
+    // Filter by tags
+    if (tags) {
+      const tagList = Array.isArray(tags) ? tags : [tags];
+      filteredIdeas = filteredIdeas.filter(idea => {
+        if (!idea.tags || !Array.isArray(idea.tags)) return false;
+        return tagList.some(tag => idea.tags.includes(tag));
+      });
     }
     
     // Search in title and description
@@ -602,7 +653,7 @@ app.get('/api/ideas/:id', async (req, res) => {
 // Create new idea
 app.post('/api/ideas', async (req, res) => {
   try {
-    const { title, description, category, source, authorName, authorEmail, attachments } = req.body;
+    const { title, description, category, source, authorName, authorEmail, attachments, tags } = req.body;
     
     if (!title || !description) {
       return res.status(400).json({
@@ -621,6 +672,7 @@ app.post('/api/ideas', async (req, res) => {
       authorName: authorName || 'Anonymous',
       authorEmail: authorEmail || '',
       attachments: attachments || [],
+      tags: tags || [],
       voteCount: 0,
       commentCount: 0,
       createdAt: new Date().toISOString(),
@@ -651,7 +703,13 @@ app.post('/api/ideas/:id/vote', async (req, res) => {
     const { userId } = req.body;
     const ideaId = parseInt(id);
     
+    console.log('🗳️ Vote request received:');
+    console.log('  - Idea ID:', ideaId);
+    console.log('  - Request body:', req.body);
+    console.log('  - User ID from body:', userId);
+    
     if (!userId) {
+      console.log('❌ Vote failed: User ID is required');
       return res.status(400).json({
         error: 'User ID is required',
         success: false
@@ -843,8 +901,59 @@ app.put('/api/admin/ideas/:id/internal', authenticateToken, async (req, res) => 
 app.post('/api/admin/ideas/:id/promote', authenticateToken, async (req, res) => {
   try {
     const { id } = req.params;
-    const { promotionType, additionalNotes } = req.body;
+    const { promotionType, additionalNotes, plannedRelease, azureProject } = req.body;
     const ideaId = parseInt(id);
+
+    console.log('🚀 Promoting idea to Azure DevOps:');
+    console.log('  - Idea ID:', ideaId);
+    console.log(`Admin ${req.user.username} promoting idea ${ideaId} as ${promotionType}`);
+    console.log('Request body:', { promotionType, additionalNotes, plannedRelease, azureProject });
+
+    // Function to convert URLs to clickable HTML links with smart labeling
+    const convertUrlsToLinks = (text) => {
+      if (!text) return text;
+      
+      // Handle URLs with preceding descriptive text (e.g., "see enclosed SharePoint document https://...")
+      const labeledUrlRegex = /(.{10,}?)\s+(https?:\/\/[^\s<>"{}|\\^`[\]]+)/gi;
+      
+      let result = text.replace(labeledUrlRegex, (match, precedingText, url) => {
+        // Use the preceding text as the label, cleaned up
+        let label = precedingText.trim();
+        
+        // Remove common prefixes to make it cleaner
+        label = label.replace(/^(see\s+|view\s+|check\s+|visit\s+)/i, '');
+        
+        return `<a href="${url}">${label}</a>`;
+      });
+      
+      // Handle any remaining standalone URLs
+      const standaloneUrlRegex = /(https?:\/\/[^\s<>"{}|\\^`[\]]+)/gi;
+      
+      result = result.replace(standaloneUrlRegex, (url) => {
+        // Skip if this URL is already part of a link
+        if (result.includes(`href="${url}"`)) {
+          return url; // Don't replace if already processed
+        }
+        
+        let smartLabel = 'View Link';
+        
+        if (url.includes('sharepoint') || url.includes('onedrive')) {
+          smartLabel = 'SharePoint/OneDrive Document';
+        } else if (url.includes('loop.microsoft.com')) {
+          smartLabel = 'Loop Workspace';
+        } else if (url.includes('github.com')) {
+          smartLabel = 'GitHub Repository';
+        } else if (url.includes('teams.microsoft.com')) {
+          smartLabel = 'Teams Meeting/Channel';
+        } else if (url.includes('outlook.office.com')) {
+          smartLabel = 'Outlook Item';
+        }
+        
+        return `<a href="${url}">${smartLabel}</a>`;
+      });
+      
+      return result;
+    };
 
     const idea = await docStore.getIdea(ideaId);
     if (!idea) {
@@ -870,29 +979,136 @@ app.post('/api/admin/ideas/:id/promote', authenticateToken, async (req, res) => 
       });
     }
 
-    // Update idea with promotion data
-    idea.promoted = true;
-    idea.promotionType = promotionType; // 'epic' or 'feature'
-    idea.promotionNotes = additionalNotes || '';
-    idea.promotedAt = new Date().toISOString();
-    idea.promotedBy = req.user.username;
-    idea.status = 'completed'; // Move to completed after promotion
-    idea.updatedAt = new Date().toISOString();
-    idea.updatedBy = req.user.username;
+    // Get Azure DevOps settings from file
+    const settingsPath = path.join(__dirname, 'data', 'settings.json');
+    let azureConfig = null;
+    
+    try {
+      const settingsData = await fs.promises.readFile(settingsPath, 'utf8');
+      const settings = JSON.parse(settingsData);
+      azureConfig = settings.azureDevOps;
+    } catch (error) {
+      console.log('No settings file found or error reading settings');
+    }
 
-    await docStore.saveIdea(idea);
+    if (!azureConfig || !azureConfig.enabled || !azureConfig.organizationUrl || !azureConfig.personalAccessToken) {
+      return res.status(400).json({
+        error: 'Azure DevOps integration not configured',
+        success: false
+      });
+    }
 
-    res.json({
-      success: true,
-      message: `Idea promoted as ${promotionType} successfully`,
-      idea: idea
+    // Create work item in Azure DevOps
+    const workItemType = promotionType === 'epic' ? 'Epic' : 'Feature';
+    const createUrl = `${azureConfig.organizationUrl}/${azureProject}/_apis/wit/workitems/$${workItemType}?api-version=6.0`;
+    
+    console.log('🌐 Creating work item URL:', createUrl);
+
+    const auth = Buffer.from(`:${azureConfig.personalAccessToken}`).toString('base64');
+    
+    // Prepare work item data with all required fields
+    const workItemData = [
+      {
+        "op": "add",
+        "path": "/fields/System.Title",
+        "value": idea.title || 'Untitled Idea'
+      },
+      {
+        "op": "add",
+        "path": "/fields/System.Description",
+        "value": `<div><strong>Description:</strong><br/>${convertUrlsToLinks(idea.description) || 'No description provided'}</div><br/><div><strong>Original Idea Details:</strong><br/>Category: ${idea.category || 'Unknown'}<br/>Source: ${idea.source || 'Unknown'}<br/>Author: ${idea.author || 'Unknown'}<br/>Submitted: ${idea.createdAt || 'Unknown'}</div><br/><div><strong>Additional Notes:</strong><br/>${convertUrlsToLinks(additionalNotes) || 'None'}</div>`
+      },
+      {
+        "op": "add",
+        "path": "/fields/System.State",
+        "value": "New"
+      },
+      {
+        "op": "add",
+        "path": "/fields/Microsoft.VSTS.Common.ValueArea",
+        "value": "Business"
+      },
+      {
+        "op": "add",
+        "path": "/fields/Custom.Bucket",
+        "value": "Roadmap"
+      }
+    ];
+
+    // Add planned release quarter to the description or tags
+    if (plannedRelease) {
+      workItemData.push({
+        "op": "add",
+        "path": "/fields/System.Tags",
+        "value": `Planned Release: ${plannedRelease}`
+      });
+    }
+
+    console.log('✅ Including all required fields: Title, State, ValueArea, and Custom.Bucket');
+
+    console.log('📋 Work item data being sent:', JSON.stringify(workItemData, null, 2));
+
+    const azureResponse = await axios.post(createUrl, workItemData, {
+      headers: {
+        'Authorization': `Basic ${auth}`,
+        'Content-Type': 'application/json-patch+json'
+      },
+      timeout: 15000
     });
 
+    if (azureResponse.status === 200 || azureResponse.status === 201) {
+      const workItem = azureResponse.data;
+      console.log('✅ Work item created successfully:', workItem.id);
+
+      // Update idea with promotion data AND Azure DevOps work item ID
+      idea.promoted = true;
+      idea.promotionType = promotionType;
+      idea.promotionNotes = additionalNotes || '';
+      idea.plannedRelease = plannedRelease;
+      idea.promotedAt = new Date().toISOString();
+      idea.promotedBy = req.user.username;
+      idea.status = 'in_progress';
+      idea.updatedAt = new Date().toISOString();
+      idea.updatedBy = req.user.username;
+      
+      // Store Azure DevOps work item details
+      idea.azureWorkItem = {
+        id: workItem.id,
+        url: workItem.url,
+        project: azureProject,
+        type: workItemType,
+        createdAt: new Date().toISOString()
+      };
+
+      await docStore.saveIdea(idea);
+
+      res.json({
+        success: true,
+        message: `Idea promoted as ${promotionType} successfully. Work item #${workItem.id} created in Azure DevOps.`,
+        idea: idea,
+        workItem: {
+          id: workItem.id,
+          url: workItem.url,
+          type: workItemType
+        }
+      });
+    } else {
+      throw new Error(`Azure DevOps API returned status ${azureResponse.status}`);
+    }
+
   } catch (error) {
-    console.error('Promote idea error:', error);
+    console.error('❌ Promote idea error:');
+    console.error('  - Error message:', error.message);
+    console.error('  - Response status:', error.response?.status);
+    console.error('  - Response data:', error.response?.data);
+    
     res.status(500).json({
-      error: 'Failed to promote idea',
-      success: false
+      error: error.response?.data?.message || error.message || 'Failed to promote idea to Azure DevOps',
+      success: false,
+      details: {
+        status: error.response?.status,
+        statusText: error.response?.statusText
+      }
     });
   }
 });
@@ -1061,7 +1277,13 @@ app.post('/api/admin/azure/test', authenticateToken, async (req, res) => {
   try {
     const { organizationUrl, project, personalAccessToken } = req.body;
 
+    console.log('🔍 Azure DevOps Test Request:');
+    console.log('  - Organization URL:', organizationUrl);
+    console.log('  - Project:', project);
+    console.log('  - PAT provided:', personalAccessToken ? 'Yes (length: ' + personalAccessToken.length + ')' : 'No');
+
     if (!organizationUrl || !project || !personalAccessToken) {
+      console.log('❌ Missing required fields');
       return res.status(400).json({
         error: 'Organization URL, project, and PAT are required',
         success: false
@@ -1069,8 +1291,12 @@ app.post('/api/admin/azure/test', authenticateToken, async (req, res) => {
     }
 
     // Simple test - try to get project info
-    const testUrl = `${organizationUrl}/${project}/_apis/projects/${project}?api-version=6.0`;
+    // Correct Azure DevOps REST API format
+    const testUrl = `${organizationUrl}/_apis/projects/${project}?api-version=6.0`;
+    console.log('🌐 Test URL:', testUrl);
+    
     const auth = Buffer.from(`:${personalAccessToken}`).toString('base64');
+    console.log('🔐 Auth header created (length):', auth.length);
     
     const response = await axios.get(testUrl, {
       headers: {
@@ -1098,9 +1324,292 @@ app.post('/api/admin/azure/test', authenticateToken, async (req, res) => {
     }
 
   } catch (error) {
-    console.error('Azure DevOps test error:', error);
+    console.error('❌ Azure DevOps test error:');
+    console.error('  - Error message:', error.message);
+    console.error('  - Response status:', error.response?.status);
+    console.error('  - Response data:', error.response?.data);
+    console.error('  - Full error:', error);
+    
     res.status(500).json({
-      error: error.response?.data?.message || 'Azure DevOps connection failed',
+      error: error.response?.data?.message || error.message || 'Azure DevOps connection failed',
+      success: false,
+      details: {
+        status: error.response?.status,
+        statusText: error.response?.statusText,
+        url: error.config?.url
+      }
+    });
+  }
+});
+
+// Admin endpoint to fetch Azure DevOps projects
+app.post('/api/admin/azure/projects', authenticateToken, async (req, res) => {
+  try {
+    const { organizationUrl, personalAccessToken } = req.body;
+
+    console.log('🔍 Fetching Azure DevOps projects:');
+    console.log('  - Organization URL:', organizationUrl);
+
+    if (!organizationUrl || !personalAccessToken) {
+      return res.status(400).json({
+        error: 'Organization URL and PAT are required',
+        success: false
+      });
+    }
+
+    // Fetch all projects in the organization
+    const projectsUrl = `${organizationUrl}/_apis/projects?api-version=6.0`;
+    console.log('🌐 Projects URL:', projectsUrl);
+    
+    const auth = Buffer.from(`:${personalAccessToken}`).toString('base64');
+    
+    const response = await axios.get(projectsUrl, {
+      headers: {
+        'Authorization': `Basic ${auth}`,
+        'Content-Type': 'application/json'
+      },
+      timeout: 10000
+    });
+
+    if (response.status === 200) {
+      const projects = response.data.value.map(project => ({
+        id: project.id,
+        name: project.name,
+        description: project.description,
+        state: project.state,
+        url: project.url
+      }));
+
+      console.log(`✅ Found ${projects.length} projects`);
+      
+      res.json({
+        success: true,
+        message: `Found ${projects.length} projects`,
+        projects: projects
+      });
+    } else {
+      res.status(400).json({
+        error: 'Failed to fetch projects from Azure DevOps',
+        success: false
+      });
+    }
+
+  } catch (error) {
+    console.error('❌ Azure DevOps projects fetch error:');
+    console.error('  - Error message:', error.message);
+    console.error('  - Response status:', error.response?.status);
+    console.error('  - Response data:', error.response?.data);
+    
+    res.status(500).json({
+      error: error.response?.data?.message || error.message || 'Failed to fetch projects',
+      success: false
+    });
+  }
+});
+
+// Admin endpoint to fetch work item type fields from Azure DevOps
+app.post('/api/admin/azure/workitemtype', authenticateToken, async (req, res) => {
+  try {
+    const { organizationUrl, project, personalAccessToken, workItemType } = req.body;
+
+    console.log('🔍 Fetching work item type definition:');
+    console.log('  - Organization URL:', organizationUrl);
+    console.log('  - Project:', project);
+    console.log('  - Work Item Type:', workItemType);
+
+    if (!organizationUrl || !project || !personalAccessToken || !workItemType) {
+      return res.status(400).json({
+        error: 'Organization URL, project, PAT, and work item type are required',
+        success: false
+      });
+    }
+
+    // Fetch work item type definition
+    const typeUrl = `${organizationUrl}/${project}/_apis/wit/workitemtypes/${workItemType}?api-version=6.0`;
+    console.log('🌐 Work item type URL:', typeUrl);
+    
+    const auth = Buffer.from(`:${personalAccessToken}`).toString('base64');
+    
+    const response = await axios.get(typeUrl, {
+      headers: {
+        'Authorization': `Basic ${auth}`,
+        'Content-Type': 'application/json'
+      },
+      timeout: 15000
+    });
+
+    if (response.status === 200) {
+      const workItemTypeDef = response.data;
+      const requiredFields = workItemTypeDef.fields?.filter(field => field.alwaysRequired || field.required) || [];
+      
+      console.log(`✅ Found work item type definition with ${requiredFields.length} required fields`);
+      console.log('📋 Required fields details:', JSON.stringify(requiredFields, null, 2));
+      
+      res.json({
+        success: true,
+        message: `Found work item type definition for ${workItemType}`,
+        workItemType: workItemTypeDef.name,
+        requiredFields: requiredFields.map(field => ({
+          name: field.name,
+          referenceName: field.referenceName,
+          type: field.type,
+          required: field.alwaysRequired || field.required,
+          allowedValues: field.allowedValues || field.allowedValuesList || 'No restrictions',
+          defaultValue: field.defaultValue,
+          helpText: field.helpText
+        }))
+      });
+    } else {
+      res.status(400).json({
+        error: 'Failed to fetch work item type definition from Azure DevOps',
+        success: false
+      });
+    }
+
+  } catch (error) {
+    console.error('❌ Azure DevOps work item type fetch error:');
+    console.error('  - Error message:', error.message);
+    console.error('  - Response status:', error.response?.status);
+    console.error('  - Response data:', error.response?.data);
+    
+    res.status(500).json({
+      error: error.response?.data?.message || error.message || 'Failed to fetch work item type definition',
+      success: false
+    });
+  }
+});
+
+// Admin endpoint to fetch specific field definition from Azure DevOps
+app.post('/api/admin/azure/field', authenticateToken, async (req, res) => {
+  try {
+    const { organizationUrl, personalAccessToken, fieldName } = req.body;
+
+    console.log('🔍 Fetching field definition:');
+    console.log('  - Organization URL:', organizationUrl);
+    console.log('  - Field Name:', fieldName);
+
+    if (!organizationUrl || !personalAccessToken || !fieldName) {
+      return res.status(400).json({
+        error: 'Organization URL, PAT, and field name are required',
+        success: false
+      });
+    }
+
+    // Fetch specific field definition
+    const fieldUrl = `${organizationUrl}/_apis/wit/fields/${fieldName}?api-version=6.0`;
+    console.log('🌐 Field URL:', fieldUrl);
+    
+    const auth = Buffer.from(`:${personalAccessToken}`).toString('base64');
+    
+    const response = await axios.get(fieldUrl, {
+      headers: {
+        'Authorization': `Basic ${auth}`,
+        'Content-Type': 'application/json'
+      },
+      timeout: 15000
+    });
+
+    if (response.status === 200) {
+      const fieldDef = response.data;
+      
+      console.log(`✅ Found field definition for ${fieldName}`);
+      console.log('📋 Field details:', JSON.stringify(fieldDef, null, 2));
+      
+      res.json({
+        success: true,
+        message: `Found field definition for ${fieldName}`,
+        field: {
+          name: fieldDef.name,
+          referenceName: fieldDef.referenceName,
+          type: fieldDef.type,
+          isPicklist: fieldDef.isPicklist,
+          picklistId: fieldDef.picklistId,
+          allowedValues: fieldDef.allowedValues,
+          defaultValue: fieldDef.defaultValue,
+          description: fieldDef.description
+        }
+      });
+    } else {
+      res.status(400).json({
+        error: 'Failed to fetch field definition from Azure DevOps',
+        success: false
+      });
+    }
+
+  } catch (error) {
+    console.error('❌ Azure DevOps field fetch error:');
+    console.error('  - Error message:', error.message);
+    console.error('  - Response status:', error.response?.status);
+    console.error('  - Response data:', error.response?.data);
+    
+    res.status(500).json({
+      error: error.response?.data?.message || error.message || 'Failed to fetch field definition',
+      success: false
+    });
+  }
+});
+
+// Admin endpoint to fetch picklist values from Azure DevOps
+app.post('/api/admin/azure/picklist', authenticateToken, async (req, res) => {
+  try {
+    const { organizationUrl, personalAccessToken, picklistId } = req.body;
+
+    console.log('🔍 Fetching picklist values:');
+    console.log('  - Organization URL:', organizationUrl);
+    console.log('  - Picklist ID:', picklistId);
+
+    if (!organizationUrl || !personalAccessToken || !picklistId) {
+      return res.status(400).json({
+        error: 'Organization URL, PAT, and picklist ID are required',
+        success: false
+      });
+    }
+
+    // Fetch picklist values
+    const picklistUrl = `${organizationUrl}/_apis/work/processes/lists/${picklistId}?api-version=6.0`;
+    console.log('🌐 Picklist URL:', picklistUrl);
+    
+    const auth = Buffer.from(`:${personalAccessToken}`).toString('base64');
+    
+    const response = await axios.get(picklistUrl, {
+      headers: {
+        'Authorization': `Basic ${auth}`,
+        'Content-Type': 'application/json'
+      },
+      timeout: 15000
+    });
+
+    if (response.status === 200) {
+      const picklistData = response.data;
+      
+      console.log(`✅ Found picklist with ${picklistData.items?.length || 0} items`);
+      console.log('📋 Picklist details:', JSON.stringify(picklistData, null, 2));
+      
+      res.json({
+        success: true,
+        message: `Found picklist with ${picklistData.items?.length || 0} items`,
+        picklist: {
+          id: picklistData.id,
+          name: picklistData.name,
+          type: picklistData.type,
+          items: picklistData.items || []
+        }
+      });
+    } else {
+      res.status(400).json({
+        error: 'Failed to fetch picklist from Azure DevOps',
+        success: false
+      });
+    }
+
+  } catch (error) {
+    console.error('❌ Azure DevOps picklist fetch error:');
+    console.error('  - Error message:', error.message);
+    console.error('  - Response status:', error.response?.status);
+    console.error('  - Response data:', error.response?.data);
+    
+    res.status(500).json({
+      error: error.response?.data?.message || error.message || 'Failed to fetch picklist',
       success: false
     });
   }
@@ -1158,6 +1667,7 @@ app.get('/api/admin/ideas', authenticateToken, async (req, res) => {
 // Get all categories
 app.get('/api/categories', async (req, res) => {
   try {
+    console.log('🔍 Categories API called');
     const fs = require('fs');
     const settingsPath = path.join(__dirname, 'data', 'settings.json');
     
@@ -1207,6 +1717,8 @@ app.get('/api/categories', async (req, res) => {
     
     // Sort categories for consistent ordering
     categories.sort();
+    
+    console.log('📋 Returning categories:', categories);
     
     res.json({
       success: true,
@@ -1272,6 +1784,41 @@ app.get('/api/sources', async (req, res) => {
   }
 });
 
+// Get all tags
+app.get('/api/tags', async (req, res) => {
+  try {
+    const ideas = await docStore.getAllIdeas();
+    const allTags = new Set();
+    
+    // Collect all tags from all ideas
+    ideas.forEach(idea => {
+      if (idea.tags && Array.isArray(idea.tags)) {
+        idea.tags.forEach(tag => {
+          if (tag && tag.trim()) {
+            allTags.add(tag.trim());
+          }
+        });
+      }
+    });
+    
+    // Convert to array and sort
+    const sortedTags = Array.from(allTags).sort();
+    
+    console.log(`📋 Found ${sortedTags.length} unique tags`);
+    
+    res.json({
+      success: true,
+      tags: sortedTags
+    });
+  } catch (error) {
+    console.error('Error fetching tags:', error);
+    res.status(500).json({
+      error: 'Failed to fetch tags',
+      success: false
+    });
+  }
+});
+
 // Get ideas statistics
 app.get('/api/stats', async (req, res) => {
   try {
@@ -1323,11 +1870,44 @@ app.use((error, req, res, next) => {
   });
 });
 
-// Create uploads directory if it doesn't exist
-const fs = require('fs');
-if (!fs.existsSync('uploads')) {
-  fs.mkdirSync('uploads');
-}
+// Create uploads directory if it doesn't exist (handled above in multer config)
+
+// Debug upload endpoint
+app.post('/api/debug/upload', upload.single('file'), (req, res) => {
+  console.log('🧪 DEBUG UPLOAD - File received:', req.file ? 'YES' : 'NO');
+  if (req.file) {
+    console.log('🧪 DEBUG UPLOAD - File details:', {
+      originalname: req.file.originalname,
+      filename: req.file.filename,
+      mimetype: req.file.mimetype,
+      size: req.file.size,
+      path: req.file.path
+    });
+    
+    // Check if file actually exists and read first few bytes
+    const fs = require('fs');
+    if (fs.existsSync(req.file.path)) {
+      const buffer = fs.readFileSync(req.file.path);
+      console.log('🧪 DEBUG UPLOAD - File size on disk:', buffer.length);
+      console.log('🧪 DEBUG UPLOAD - First 50 bytes:', buffer.toString('utf8', 0, 50));
+      
+      // Check if file is corrupted (contains XML error)
+      const content = buffer.toString('utf8');
+      if (content.includes('<Error><Code>AccessDenied</Code>')) {
+        console.log('❌ DEBUG UPLOAD - File is corrupted with Access Denied error');
+        // Delete the corrupted file
+        fs.unlinkSync(req.file.path);
+        console.log('🗑️ DEBUG UPLOAD - Deleted corrupted file');
+      }
+    }
+  }
+  
+  res.json({
+    success: true,
+    file: req.file,
+    message: 'Debug upload complete'
+  });
+});
 
 // Test route for debugging authentication
 app.get('/api/admin/test', authenticateToken, (req, res) => {
@@ -1385,7 +1965,7 @@ app.post('/api/admin/test-excel', authenticateToken, async (req, res) => {
     await docStore.updateTotalCount();
     
     console.log('✅ Test Excel processing completed successfully');
-    res.json({
+    return res.json({
       success: true,
       message: `Successfully processed ${processedIdeas.length} test ideas`,
       ideas: processedIdeas
@@ -1393,9 +1973,10 @@ app.post('/api/admin/test-excel', authenticateToken, async (req, res) => {
     
   } catch (error) {
     console.error('❌ Test Excel processing error:', error);
-    res.status(500).json({
+    return res.status(500).json({
       success: false,
-      error: error.message
+      error: 'Failed to process test Excel data',
+      details: error.message
     });
   }
 });
@@ -1417,13 +1998,18 @@ app.post('/api/admin/import/mapped-data', authenticateToken, async (req, res) =>
     console.log('Column mapping:', mapping);
     
     const processedIdeas = [];
+    const processedComments = [];
     const errors = [];
     
+    // First pass: Import all ideas
     for (let i = 0; i < data.length; i++) {
       const row = data[i];
       const rowNum = i + 1;
       
       try {
+        // Skip if this is a comment-only row (has comment but no idea data)
+        if (row.isCommentOnly) continue;
+        
         // Create idea from mapped data
         const idea = {
           title: (row.title || '').toString().trim(),
@@ -1432,12 +2018,16 @@ app.post('/api/admin/import/mapped-data', authenticateToken, async (req, res) =>
           source: (row.source || 'Mapped Import').toString().trim(),
           authorName: (row.authorName || 'Mapped Import').toString().trim(),
           authorEmail: (row.authorEmail || '').toString().trim(),
-          status: 'submitted',
+          status: row.status || 'submitted',
+          priority: row.priority || 'medium',
           estimatedEffort: row.estimatedEffort || null,
           effortUnit: row.effortUnit || 'story_points',
           detailedRequirements: (row.detailedRequirements || '').toString().trim(),
+          notes: (row.notes || '').toString().trim(),
           features: [],
-          useCases: []
+          useCases: [],
+          externalId: row.externalId || null, // Store external ID for comment reference
+          originalRowIndex: i // Store original row index for comment reference
         };
 
         // Process features if provided
@@ -1454,7 +2044,8 @@ app.post('/api/admin/import/mapped-data', authenticateToken, async (req, res) =>
         if (!idea.title || idea.title === '') {
           errors.push({
             row: rowNum,
-            error: 'Missing required field: Title'
+            error: 'Missing required field: Title',
+            isComment: false
           });
           continue;
         }
@@ -1462,7 +2053,8 @@ app.post('/api/admin/import/mapped-data', authenticateToken, async (req, res) =>
         if (!idea.description || idea.description === '') {
           errors.push({
             row: rowNum,
-            error: 'Missing required field: Description'
+            error: 'Missing required field: Description',
+            isComment: false
           });
           continue;
         }
@@ -1471,8 +2063,8 @@ app.post('/api/admin/import/mapped-data', authenticateToken, async (req, res) =>
         idea.id = await docStore.getNextId();
         idea.createdAt = new Date().toISOString();
         idea.updatedAt = new Date().toISOString();
-        idea.voteCount = 0;
-        idea.commentCount = 0;
+        idea.voteCount = row.voteCount || 0;
+        idea.commentCount = 0; // Will be updated when comments are added
         idea.attachments = [];
         idea.promoted = false;
 
@@ -1484,25 +2076,110 @@ app.post('/api/admin/import/mapped-data', authenticateToken, async (req, res) =>
       } catch (error) {
         errors.push({
           row: rowNum,
-          error: `Processing error: ${error.message}`
+          error: `Processing error: ${error.message}`,
+          isComment: false
         });
       }
+    }
+    
+    // Second pass: Import comments and associate with ideas
+    for (let i = 0; i < data.length; i++) {
+      const row = data[i];
+      const rowNum = i + 1;
+      
+      try {
+        // Skip if no comment data or if it's not a comment row
+        if (!row.commentContent && !row.isCommentOnly) continue;
+        
+        let ideaId;
+        
+        // If this is a comment-only row, it should have a reference to an existing idea
+        if (row.isCommentOnly) {
+          if (row.ideaExternalId) {
+            // Find idea by external ID
+            const allIdeas = await docStore.getAllIdeas();
+            const targetIdea = allIdeas.find(idea => idea.externalId === row.ideaExternalId);
+            if (!targetIdea) {
+              errors.push({
+                row: rowNum,
+                error: `Could not find idea with external ID: ${row.ideaExternalId}`,
+                isComment: true
+              });
+              continue;
+            }
+            ideaId = targetIdea.id;
+          } else if (row.ideaRowIndex !== undefined) {
+            // Find idea by original row index
+            const targetIdea = processedIdeas.find(idea => idea.originalRowIndex === row.ideaRowIndex);
+            if (!targetIdea) {
+              errors.push({
+                row: rowNum,
+                error: `Could not find idea at row index: ${row.ideaRowIndex}`,
+                isComment: true
+              });
+              continue;
+            }
+            ideaId = targetIdea.id;
+          } else {
+            errors.push({
+              row: rowNum,
+              error: 'Comment row is missing idea reference (need ideaExternalId or ideaRowIndex)',
+              isComment: true
+            });
+            continue;
+          }
+        } else {
+          // This is a regular row with a comment
+          const idea = processedIdeas.find(idea => idea.originalRowIndex === i);
+          if (!idea) continue; // Skip if the idea wasn't created
+          ideaId = idea.id;
+        }
+        
+        // Create the comment
+        const commentData = {
+          content: row.commentContent || '',
+          authorName: row.commentAuthor || 'Imported User',
+          authorEmail: row.commentAuthorEmail || '',
+          createdAt: row.commentDate || new Date().toISOString(),
+          updatedAt: row.commentDate || new Date().toISOString()
+        };
+        
+        const comment = await createComment(ideaId, commentData);
+        processedComments.push({
+          id: comment.id,
+          ideaId: ideaId,
+          content: comment.content
+        });
+        
+        console.log(`💬 Added comment to idea ${ideaId}`);
+        
+      } catch (error) {
+        errors.push({
+          row: rowNum,
+          error: `Comment processing error: ${error.message}`,
+          isComment: true
+        });
+      }
+    }
+    
+    // Clean up temporary fields from ideas
+    for (const idea of processedIdeas) {
+      if (idea.externalId !== undefined) delete idea.externalId;
+      if (idea.originalRowIndex !== undefined) delete idea.originalRowIndex;
+      await docStore.saveIdea(idea);
     }
     
     // Update total count
     await docStore.updateTotalCount();
     
-    console.log(`Mapped import completed: ${processedIdeas.length} ideas saved, ${errors.length} errors`);
+    console.log(`Import completed: ${processedIdeas.length} ideas and ${processedComments.length} comments saved, ${errors.length} errors`);
     
     res.json({
       success: true,
-      message: `Successfully imported ${processedIdeas.length} ideas`,
-      statistics: {
-        totalRows: data.length,
-        processed: processedIdeas.length,
-        saved: processedIdeas.length,
-        errors: errors.length
-      },
+      message: `Successfully imported ${processedIdeas.length} ideas and ${processedComments.length} comments`,
+      importedIdeas: processedIdeas.length,
+      importedComments: processedComments.length,
+      errorCount: errors.length,
       errors: errors
     });
     
@@ -2198,6 +2875,62 @@ const startServer = async () => {
 
 startServer();
 
+// ===== TAGS API ENDPOINTS =====
+
+// Get all unique tags
+app.get('/api/tags', async (req, res) => {
+  try {
+    const ideas = await docStore.getAllIdeas();
+    const allTags = new Set();
+    
+    ideas.forEach(idea => {
+      if (idea.tags && Array.isArray(idea.tags)) {
+        idea.tags.forEach(tag => {
+          if (tag && typeof tag === 'string') {
+            allTags.add(tag.trim());
+          }
+        });
+      }
+    });
+    
+    res.json({
+      success: true,
+      tags: Array.from(allTags).sort()
+    });
+  } catch (error) {
+    console.error('Error fetching tags:', error);
+    res.status(500).json({
+      success: false,
+      error: 'Failed to fetch tags'
+    });
+  }
+});
+
+// Get ideas by tag
+app.get('/api/ideas/tag/:tag', async (req, res) => {
+  try {
+    const { tag } = req.params;
+    const ideas = await docStore.getAllIdeas();
+    
+    const filteredIdeas = ideas.filter(idea => 
+      idea.tags && 
+      Array.isArray(idea.tags) && 
+      idea.tags.some(t => t && t.toLowerCase() === tag.toLowerCase())
+    );
+    
+    res.json({
+      success: true,
+      ideas: filteredIdeas
+    });
+  } catch (error) {
+    console.error('Error fetching ideas by tag:', error);
+    res.status(500).json({
+      success: false,
+      error: 'Failed to fetch ideas by tag'
+    });
+  }
+});
+
 // ===== COMMENTS API ENDPOINTS =====
 
 // Get comment counts for multiple ideas (for card badges)
@@ -2525,6 +3258,110 @@ function buildCommentThreads(comments) {
   // Return root comments with their threaded replies
   return rootComments.map(id => commentMap.get(id)).filter(Boolean);
 }
+
+// File upload endpoint for idea attachments
+app.post('/api/ideas/:id/attachments', upload.array('files', 5), async (req, res) => {
+  try {
+    console.log('📤 Attachment upload request received for idea:', req.params.id);
+    console.log('📤 Request files:', req.files ? req.files.length : 0);
+    
+    if (!req.files || req.files.length === 0) {
+      console.log('❌ No files in request');
+      return res.status(400).json({
+        success: false,
+        error: 'No files uploaded'
+      });
+    }
+
+    // Log each uploaded file details
+    req.files.forEach((file, index) => {
+      console.log(`📄 File ${index + 1}:`, {
+        originalname: file.originalname,
+        filename: file.filename,
+        mimetype: file.mimetype,
+        size: file.size,
+        path: file.path
+      });
+    });
+
+    const ideaId = parseInt(req.params.id);
+    const idea = await docStore.getIdea(ideaId);
+    
+    if (!idea) {
+      return res.status(404).json({
+        success: false,
+        error: 'Idea not found'
+      });
+    }
+
+    const uploadedFiles = req.files.map(file => ({
+      originalName: file.originalname,
+      filename: file.filename,
+      url: `/uploads/${file.filename}`,
+      size: file.size,
+      mimetype: file.mimetype,
+      uploadedAt: new Date().toISOString()
+    }));
+
+    // Add attachments to the idea
+    const updatedIdea = {
+      ...idea,
+      attachments: [...(idea.attachments || []), ...uploadedFiles],
+      updatedAt: new Date().toISOString()
+    };
+
+    await docStore.saveIdea(updatedIdea);
+
+    console.log('✅ Attachments uploaded successfully:', uploadedFiles.map(f => f.originalName));
+
+    res.json({
+      success: true,
+      files: uploadedFiles,
+      idea: updatedIdea
+    });
+  } catch (error) {
+    console.error('❌ Attachment upload error:', error);
+    res.status(500).json({
+      success: false,
+      error: 'Attachment upload failed'
+    });
+  }
+});
+
+// General file upload endpoint
+app.post('/api/upload', upload.array('files', 5), (req, res) => {
+  try {
+    console.log('📤 File upload request received');
+    
+    if (!req.files || req.files.length === 0) {
+      return res.status(400).json({
+        success: false,
+        error: 'No files uploaded'
+      });
+    }
+
+    const uploadedFiles = req.files.map(file => ({
+      originalName: file.originalname,
+      filename: file.filename,
+      url: `/uploads/${file.filename}`,
+      size: file.size,
+      mimetype: file.mimetype
+    }));
+
+    console.log('✅ Files uploaded successfully:', uploadedFiles.map(f => f.originalName));
+
+    res.json({
+      success: true,
+      files: uploadedFiles
+    });
+  } catch (error) {
+    console.error('❌ File upload error:', error);
+    res.status(500).json({
+      success: false,
+      error: 'File upload failed'
+    });
+  }
+});
 
 // Serve React app for all non-API routes
 app.get('*', (req, res) => {

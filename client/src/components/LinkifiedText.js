@@ -12,7 +12,7 @@ const LinkifiedText = ({ text }) => {
       const pathname = urlObj.pathname;
       
       // Handle Microsoft Loop links
-      if (hostname.includes('loop.microsoft.com') || hostname.includes('microsoft.com') && pathname.includes('loop')) {
+      if (hostname.includes('loop.microsoft.com') || (hostname.includes('microsoft.com') && pathname.includes('loop'))) {
         return 'Microsoft Loop Document';
       }
       
@@ -99,8 +99,6 @@ const LinkifiedText = ({ text }) => {
 
   // Regular expressions for different link types
   const markdownLinkRegex = /\[([^\]]+)\]\(([^)]+)\)/g;
-  // Enhanced URL regex to capture more complete URLs including those with special characters
-  // This will capture URLs until whitespace, quotes, or common delimiters
   const urlRegex = /(https?:\/\/[^\s<>"{}|\\^`\[\]\n\r]+)/g;
   const imageMarkdownRegex = /!\[([^\]]*)\]\(([^)]+)\)/g;
   
@@ -120,20 +118,118 @@ const LinkifiedText = ({ text }) => {
     return placeholder;
   });
   
-  // Split text by URLs, markdown links, and image placeholders
-  const allRegex = new RegExp(`(${urlRegex.source}|__LINK_\\d+__|__IMAGE_\\d+__)`, 'g');
-  const parts = processedText.split(allRegex);
+  // Process the text to handle URLs
+  const parts = [];
+  let lastIndex = 0;
+  let match;
   
+  // Find all URLs in the text
+  while ((match = urlRegex.exec(processedText)) !== null) {
+    // Add text before the URL
+    if (match.index > lastIndex) {
+      parts.push({
+        type: 'text',
+        content: processedText.substring(lastIndex, match.index)
+      });
+    }
+    
+    // Add the URL
+    parts.push({
+      type: 'url',
+      text: match[0],
+      friendlyName: getFriendlyUrlName(match[0])
+    });
+    
+    lastIndex = match.index + match[0].length;
+  }
+  
+  // Add remaining text after the last URL
+  if (lastIndex < processedText.length) {
+    parts.push({
+      type: 'text',
+      content: processedText.substring(lastIndex)
+    });
+  }
+  
+  // Process a text part that might contain markdown links or images
+  const processTextPart = (text, key) => {
+    if (!text) return null;
+    
+    // Split text by markdown links and image placeholders
+    const textParts = text.split(/(__LINK_\d+__|__IMAGE_\d+__)/g);
+    
+    return textParts.map((part, i) => {
+      const partKey = `${key}-${i}`;
+      
+      // Check if this part is a markdown link placeholder
+      const linkMatch = linkMatches.find(link => link.placeholder === part);
+      if (linkMatch) {
+        return (
+          <Link
+            key={partKey}
+            href={linkMatch.url}
+            target="_blank"
+            rel="noopener noreferrer"
+            sx={{ 
+              color: 'primary.main',
+              textDecoration: 'underline',
+              '&:hover': {
+                textDecoration: 'none'
+              }
+            }}
+          >
+            {linkMatch.text}
+          </Link>
+        );
+      }
+      
+      // Check if this part is an image placeholder
+      const imageMatch = imageMatches.find(img => img.placeholder === part);
+      if (imageMatch) {
+        return (
+          <img
+            key={partKey}
+            src={imageMatch.src}
+            alt={imageMatch.alt}
+            style={{
+              maxWidth: '100%',
+              height: 'auto',
+              display: 'block',
+              margin: '8px 0',
+              borderRadius: '4px',
+              boxShadow: '0 2px 8px rgba(0,0,0,0.1)'
+            }}
+            onError={(e) => {
+              e.target.style.display = 'none';
+              // Show a fallback text
+              const fallback = document.createElement('span');
+              fallback.textContent = `[Image: ${imageMatch.alt || 'Unable to load'}]`;
+              fallback.style.color = '#666';
+              fallback.style.fontStyle = 'italic';
+              e.target.parentNode.insertBefore(fallback, e.target);
+            }}
+          />
+        );
+      }
+      
+      // Regular text - preserve line breaks
+      return part.split('\n').map((line, lineIndex, lines) => (
+        <React.Fragment key={`${partKey}-${lineIndex}`}>
+          {line}
+          {lineIndex < lines.length - 1 && <br />}
+        </React.Fragment>
+      ));
+    });
+  };
+
   return (
     <Typography variant="body2" color="text.secondary" component="div">
       {parts.map((part, index) => {
-        // Check if this part is a markdown link placeholder
-        const linkMatch = linkMatches.find(link => link.placeholder === part);
-        if (linkMatch) {
+        if (part.type === 'url') {
           return (
             <Link
-              key={index}
-              href={linkMatch.url}
+              key={`url-${index}`}
+              href={part.text}
               target="_blank"
               rel="noopener noreferrer"
               sx={{ 
@@ -143,71 +239,19 @@ const LinkifiedText = ({ text }) => {
                   textDecoration: 'none'
                 }
               }}
+              title={part.text} // Show full URL on hover
             >
-              {linkMatch.text}
+              {part.friendlyName}
             </Link>
           );
         }
         
-        // Check if this part is a raw URL
-        if (urlRegex.test(part)) {
-          const friendlyName = getFriendlyUrlName(part);
-          return (
-            <Link
-              key={index}
-              href={part}
-              target="_blank"
-              rel="noopener noreferrer"
-              sx={{ 
-                color: 'primary.main',
-                textDecoration: 'underline',
-                '&:hover': {
-                  textDecoration: 'none'
-                }
-              }}
-              title={part} // Show full URL on hover
-            >
-              {friendlyName}
-            </Link>
-          );
-        }
-        
-        // Check if this part is an image placeholder
-        const imagePlaceholder = imageMatches.find(img => img.placeholder === part);
-        if (imagePlaceholder) {
-          return (
-            <img
-              key={index}
-              src={imagePlaceholder.src}
-              alt={imagePlaceholder.alt}
-              style={{
-                maxWidth: '100%',
-                height: 'auto',
-                display: 'block',
-                margin: '8px 0',
-                borderRadius: '4px',
-                boxShadow: '0 2px 8px rgba(0,0,0,0.1)'
-              }}
-              onError={(e) => {
-                e.target.style.display = 'none';
-                // Show a fallback text
-                const fallback = document.createElement('span');
-                fallback.textContent = `[Image: ${imagePlaceholder.alt || 'Unable to load'}]`;
-                fallback.style.color = '#666';
-                fallback.style.fontStyle = 'italic';
-                e.target.parentNode.insertBefore(fallback, e.target);
-              }}
-            />
-          );
-        }
-        
-        // Regular text - preserve line breaks
-        return part.split('\n').map((line, lineIndex, lines) => (
-          <React.Fragment key={`${index}-${lineIndex}`}>
-            {line}
-            {lineIndex < lines.length - 1 && <br />}
+        // Process regular text that might contain markdown links/images
+        return (
+          <React.Fragment key={`text-${index}`}>
+            {processTextPart(part.content, `text-${index}`)}
           </React.Fragment>
-        ));
+        );
       })}
     </Typography>
   );
