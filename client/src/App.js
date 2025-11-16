@@ -52,6 +52,7 @@ import ProductTeamDashboard from './components/ProductTeamDashboard';
 import LinkTest from './components/LinkTest';
 import CommentModal from './components/CommentModal';
 import LoginDialog from './components/LoginDialog';
+import RegistrationDialog from './components/RegistrationDialog';
 import { ThemeProvider } from './contexts/ThemeContext';
 import ThemeToggle from './components/ThemeToggle';
 
@@ -79,6 +80,7 @@ function App() {
   const [showCommentModal, setShowCommentModal] = useState(false);
   const [adminUser, setAdminUser] = useState(null);
   const [showLoginDialog, setShowLoginDialog] = useState(false);
+  const [showRegistrationDialog, setShowRegistrationDialog] = useState(false);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
   const [viewMode, setViewMode] = useState('card'); // 'card' or 'list'
@@ -89,7 +91,7 @@ function App() {
     'approved': 'Approved',
     'in_progress': 'In Progress',
     'completed': 'Completed',
-    'declined': 'Declined'
+    'parked': 'Parking Lot'
   };
 
   const statusColors = {
@@ -98,7 +100,7 @@ function App() {
     'approved': 'success',
     'in_progress': 'info',
     'completed': 'success',
-    'declined': 'error'
+    'parked': 'error'
   };
 
   const fetchIdeas = async () => {
@@ -243,6 +245,25 @@ function App() {
     setAdminUser(user);
     setShowAdminDashboard(true);
     setShowLoginDialog(false);
+  };
+
+  const handleRegistrationSuccess = (user) => {
+    console.log('✅ Registration successful, setting up dashboard for:', user);
+    setAdminUser(user);
+    if (user.role === 'admin') {
+      setShowAdminDashboard(true);
+    }
+    setShowRegistrationDialog(false);
+  };
+
+  const handleSwitchToLogin = () => {
+    setShowRegistrationDialog(false);
+    setShowLoginDialog(true);
+  };
+
+  const handleSwitchToRegister = () => {
+    setShowLoginDialog(false);
+    setShowRegistrationDialog(true);
   };
 
   const handleAdminLogout = () => {
@@ -950,6 +971,14 @@ function App() {
             setShowLoginDialog(false);
           }}
           onLoginSuccess={handleLoginSuccess}
+          onSwitchToRegister={handleSwitchToRegister}
+        />
+
+        <RegistrationDialog
+          open={showRegistrationDialog}
+          onClose={() => setShowRegistrationDialog(false)}
+          onSuccess={handleRegistrationSuccess}
+          onSwitchToLogin={handleSwitchToLogin}
         />
       </Box>
     </ThemeProvider>

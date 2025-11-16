@@ -39,7 +39,7 @@ const CommentModal = ({ open, onClose, idea }) => {
     'approved': 'success',
     'in_progress': 'info',
     'completed': 'success',
-    'declined': 'error'
+    'parked': 'error'
   };
 
   const statusLabels = {
@@ -48,7 +48,7 @@ const CommentModal = ({ open, onClose, idea }) => {
     'approved': 'Approved', 
     'in_progress': 'In Progress',
     'completed': 'Completed',
-    'declined': 'Declined'
+    'parked': 'Parking Lot'
   };
 
   return (

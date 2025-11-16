@@ -7,6 +7,7 @@ class DocumentStore {
     this.dataDir = dataDir;
     this.ideasDir = path.join(dataDir, 'ideas');
     this.commentsDir = path.join(dataDir, 'comments');
+    this.usersDir = path.join(dataDir, 'users');
     this.metaFile = path.join(dataDir, 'meta.json');
     this.init();
   }
@@ -17,6 +18,7 @@ class DocumentStore {
       await fs.mkdir(this.dataDir, { recursive: true });
       await fs.mkdir(this.ideasDir, { recursive: true });
       await fs.mkdir(this.commentsDir, { recursive: true });
+      await fs.mkdir(this.usersDir, { recursive: true });
       
       // Initialize meta file if it doesn't exist
       try {
@@ -268,6 +270,101 @@ class DocumentStore {
     } catch {
       return 0;
     }
+  }
+
+  // ===== USER METHODS =====
+
+  async saveUser(user) {
+    const filename = `user-${user.id}.json`;
+    const filepath = path.join(this.usersDir, filename);
+    await fs.writeFile(filepath, JSON.stringify(user, null, 2));
+    return user;
+  }
+
+  async getUserById(id) {
+    try {
+      const filename = `user-${id}.json`;
+      const filepath = path.join(this.usersDir, filename);
+      const data = await fs.readFile(filepath, 'utf8');
+      return JSON.parse(data);
+    } catch {
+      return null;
+    }
+  }
+
+  async getUserByEmail(email) {
+    try {
+      const files = await fs.readdir(this.usersDir);
+      const userFiles = files.filter(file => file.startsWith('user-') && file.endsWith('.json'));
+      
+      for (const file of userFiles) {
+        const filepath = path.join(this.usersDir, file);
+        const data = await fs.readFile(filepath, 'utf8');
+        const user = JSON.parse(data);
+        if (user.email.toLowerCase() === email.toLowerCase()) {
+          return user;
+        }
+      }
+      return null;
+    } catch {
+      return null;
+    }
+  }
+
+  async getAllUsers() {
+    try {
+      const files = await fs.readdir(this.usersDir);
+      const userFiles = files.filter(file => file.startsWith('user-') && file.endsWith('.json'));
+      
+      const users = await Promise.all(
+        userFiles.map(async (file) => {
+          try {
+            const filepath = path.join(this.usersDir, file);
+            const data = await fs.readFile(filepath, 'utf8');
+            return JSON.parse(data);
+          } catch {
+            return null;
+          }
+        })
+      );
+
+      return users.filter(user => user !== null);
+    } catch {
+      return [];
+    }
+  }
+
+  async updateUser(id, updates) {
+    try {
+      const user = await this.getUserById(id);
+      if (user) {
+        const updatedUser = {
+          ...user,
+          ...updates,
+          updatedAt: new Date().toISOString()
+        };
+        await this.saveUser(updatedUser);
+        return updatedUser;
+      }
+      return null;
+    } catch {
+      return null;
+    }
+  }
+
+  async createUser(userData) {
+    const user = {
+      id: uuidv4(),
+      email: userData.email.toLowerCase(),
+      password: userData.password, // Should be hashed before calling this
+      name: userData.name || '',
+      role: userData.email.toLowerCase().endsWith('@jestais.com') ? 'admin' : 'user',
+      createdAt: new Date().toISOString(),
+      updatedAt: new Date().toISOString()
+    };
+
+    await this.saveUser(user);
+    return user;
   }
 }
 

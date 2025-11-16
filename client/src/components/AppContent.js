@@ -80,7 +80,7 @@ const AppContent = () => {
     'approved': 'Approved',
     'in_progress': 'In Progress',
     'completed': 'Completed',
-    'declined': 'Declined'
+    'parked': 'Parking Lot'
   };
 
   const statusColors = {
@@ -89,7 +89,7 @@ const AppContent = () => {
     'approved': 'success',
     'in_progress': 'info',
     'completed': 'success',
-    'declined': 'error'
+    'parked': 'error'
   };
 
   // All the existing functions from App.js would go here...

@@ -489,19 +489,85 @@ app.post('/api/admin/reports/test', authenticateToken, (req, res) => {
 });
 
 // Authentication endpoints
-app.post('/api/auth/login', async (req, res) => {
-  try {
-    const { username, password } = req.body;
 
-    if (!username || !password) {
+// Register new user
+app.post('/api/auth/register', async (req, res) => {
+  try {
+    const { email, password, name } = req.body;
+
+    if (!email || !password) {
       return res.status(400).json({
-        error: 'Username and password are required',
+        error: 'Email and password are required',
         success: false
       });
     }
 
-    // Find user
-    const user = adminUsers.find(u => u.username === username);
+    // Check if user already exists
+    const existingUser = await docStore.getUserByEmail(email);
+    if (existingUser) {
+      return res.status(409).json({
+        error: 'User with this email already exists',
+        success: false
+      });
+    }
+
+    // Hash password
+    const hashedPassword = await bcrypt.hash(password, 10);
+
+    // Create user (role is automatically set based on email domain)
+    const user = await docStore.createUser({
+      email,
+      password: hashedPassword,
+      name: name || ''
+    });
+
+    // Generate JWT token
+    const token = jwt.sign(
+      { 
+        id: user.id, 
+        email: user.email,
+        role: user.role 
+      },
+      JWT_SECRET,
+      { expiresIn: '24h' }
+    );
+
+    console.log(`✅ New user registered: ${email} (${user.role})`);
+
+    res.status(201).json({
+      success: true,
+      token,
+      user: {
+        id: user.id,
+        email: user.email,
+        name: user.name,
+        role: user.role
+      }
+    });
+
+  } catch (error) {
+    console.error('Registration error:', error);
+    res.status(500).json({
+      error: 'Registration failed',
+      success: false
+    });
+  }
+});
+
+// Login
+app.post('/api/auth/login', async (req, res) => {
+  try {
+    const { email, password } = req.body;
+
+    if (!email || !password) {
+      return res.status(400).json({
+        error: 'Email and password are required',
+        success: false
+      });
+    }
+
+    // Find user by email
+    const user = await docStore.getUserByEmail(email);
     if (!user) {
       return res.status(401).json({
         error: 'Invalid credentials',
@@ -509,8 +575,9 @@ app.post('/api/auth/login', async (req, res) => {
       });
     }
 
-    // Check password (simple comparison for demo - use bcrypt in production)
-    if (password !== user.password) {
+    // Check password
+    const validPassword = await bcrypt.compare(password, user.password);
+    if (!validPassword) {
       return res.status(401).json({
         error: 'Invalid credentials',
         success: false
@@ -521,19 +588,21 @@ app.post('/api/auth/login', async (req, res) => {
     const token = jwt.sign(
       { 
         id: user.id, 
-        username: user.username, 
+        email: user.email, 
         role: user.role 
       },
       JWT_SECRET,
       { expiresIn: '24h' }
     );
 
+    console.log(`✅ User logged in: ${email} (${user.role})`);
+
     res.json({
       success: true,
       token,
       user: {
         id: user.id,
-        username: user.username,
+        email: user.email,
         name: user.name,
         role: user.role
       }
@@ -818,7 +887,7 @@ app.put('/api/admin/ideas/:id/status', authenticateToken, async (req, res) => {
       });
     }
 
-    const validStatuses = ['submitted', 'under_review', 'approved', 'in_progress', 'completed', 'declined'];
+    const validStatuses = ['submitted', 'under_review', 'approved', 'in_progress', 'completed', 'parked'];
     if (!validStatuses.includes(status)) {
       return res.status(400).json({
         error: 'Invalid status',
@@ -1196,11 +1265,11 @@ app.get('/api/admin/settings', authenticateToken, async (req, res) => {
           color: '#388e3c',
           bgColor: '#f1f8e9'
         },
-        'declined': {
-          title: 'Declined',
+        'parked': {
+          title: 'Parking Lot',
           color: '#d32f2f',
           bgColor: '#ffebee'
-        }
+        },
       },
       azureDevOps: {
         enabled: false,
@@ -1625,7 +1694,7 @@ app.get('/api/admin/ideas', authenticateToken, async (req, res) => {
     
     // Normalize status values for all ideas
     const normalizedIdeas = ideas.map(idea => {
-      const validStatuses = ['submitted', 'under_review', 'approved', 'in_progress', 'completed', 'declined'];
+      const validStatuses = ['submitted', 'under_review', 'approved', 'in_progress', 'completed', 'parked'];
       let status = idea.status || 'submitted';
       
       // Normalize common status variations
@@ -2506,7 +2575,7 @@ app.post('/api/admin/import/excel', authenticateToken, upload.single('excelFile'
         idea.description = idea.description.trim();
 
         // Validate status
-        const validStatuses = ['submitted', 'under_review', 'approved', 'in_progress', 'completed', 'declined'];
+        const validStatuses = ['submitted', 'under_review', 'approved', 'in_progress', 'completed', 'parked'];
         if (!validStatuses.includes(idea.status)) {
           idea.status = 'submitted'; // Default to submitted if invalid
         }
@@ -2682,73 +2751,75 @@ app.post('/api/admin/reports/roadmap', authenticateToken, async (req, res) => {
             font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
             margin: 20px;
             color: #333;
-            line-height: 1.6;
+            line-height: 1.4;
+            font-size: 11pt;
         }
         .header {
             text-align: center;
             border-bottom: 3px solid #1976d2;
-            padding-bottom: 20px;
-            margin-bottom: 30px;
+            padding-bottom: 15px;
+            margin-bottom: 20px;
         }
         .header h1 {
             color: #1976d2;
             margin: 0;
-            font-size: 2.5em;
+            font-size: 1.8em;
         }
         .header .subtitle {
             color: #666;
-            font-size: 1.2em;
-            margin-top: 10px;
+            font-size: 1em;
+            margin-top: 5px;
         }
         .summary {
             display: grid;
             grid-template-columns: repeat(4, 1fr);
-            gap: 20px;
-            margin-bottom: 30px;
+            gap: 15px;
+            margin-bottom: 20px;
         }
         .summary-card {
             background: #f5f5f5;
-            padding: 20px;
-            border-radius: 8px;
+            padding: 12px;
+            border-radius: 6px;
             text-align: center;
-            border-left: 4px solid #1976d2;
+            border-left: 3px solid #1976d2;
         }
         .summary-card h3 {
             margin: 0;
-            font-size: 2em;
+            font-size: 1.5em;
             color: #1976d2;
         }
         .summary-card p {
-            margin: 5px 0 0 0;
+            margin: 3px 0 0 0;
             color: #666;
             font-weight: bold;
+            font-size: 0.9em;
         }
         .idea-card {
             background: white;
             border: 1px solid #ddd;
-            border-radius: 8px;
-            padding: 20px;
-            margin-bottom: 15px;
-            box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+            border-radius: 6px;
+            padding: 12px;
+            margin-bottom: 12px;
+            box-shadow: 0 1px 3px rgba(0,0,0,0.1);
         }
         .idea-title {
-            font-size: 1.2em;
+            font-size: 1.1em;
             font-weight: bold;
             color: #333;
-            margin-bottom: 10px;
+            margin-bottom: 8px;
         }
         .idea-meta {
             display: flex;
             flex-wrap: wrap;
-            gap: 10px;
-            margin-bottom: 10px;
+            gap: 6px;
+            margin-bottom: 8px;
         }
         .meta-chip {
             background: #e3f2fd;
             color: #1976d2;
-            padding: 4px 12px;
-            border-radius: 16px;
-            font-size: 0.9em;
+            padding: 3px 10px;
+            border-radius: 12px;
+            font-size: 0.85em;
         }
         .meta-chip.approved {
             background: #e8f5e8;
@@ -2756,20 +2827,57 @@ app.post('/api/admin/reports/roadmap', authenticateToken, async (req, res) => {
         }
         .idea-description {
             color: #666;
+            margin-bottom: 10px;
+            line-height: 1.4;
+            font-size: 0.95em;
+        }
+        h2 {
+            color: #1976d2;
+            margin-top: 20px;
             margin-bottom: 15px;
-            line-height: 1.5;
+            font-size: 1.3em;
         }
         .footer {
-            margin-top: 50px;
-            padding-top: 20px;
+            margin-top: 30px;
+            padding-top: 15px;
             border-top: 1px solid #ddd;
             text-align: center;
             color: #666;
-            font-size: 0.9em;
+            font-size: 0.85em;
         }
         @media print {
-            body { margin: 0; }
-            .idea-card { break-inside: avoid; }
+            @page {
+                size: letter;
+                margin: 0.75in;
+            }
+            body { 
+                margin: 0;
+                padding: 0;
+            }
+            .header {
+                page-break-after: avoid;
+            }
+            .summary {
+                page-break-after: avoid;
+                page-break-inside: avoid;
+                margin-bottom: 20px;
+            }
+            h2 {
+                page-break-after: avoid;
+                page-break-before: auto;
+            }
+            .idea-card { 
+                break-inside: avoid;
+                page-break-inside: avoid;
+                margin-bottom: 10px;
+            }
+            .footer {
+                page-break-before: avoid;
+            }
+            /* Ensure header doesn't repeat on every page */
+            .header {
+                position: relative;
+            }
         }
     </style>
 </head>

@@ -62,7 +62,8 @@ import {
   Sort as SortIcon,
   ArrowUpward as NewestIcon,
   ArrowDownward as OldestIcon,
-  LocalParking as ParkingIcon
+  LocalParking as ParkingIcon,
+  Search as SearchIcon
 } from '@mui/icons-material';
 import axios from 'axios';
 import LinkifiedText from './LinkifiedText';
@@ -101,7 +102,7 @@ const statusColumns = {
     color: '#388e3c',
     bgColor: '#f1f8e9'
   },
-  'declined': {
+  'parked': {
     title: 'Parking Lot',
     color: '#f44336',
     bgColor: '#ffebee'
@@ -133,6 +134,7 @@ const ProductTeamDashboard = ({ user, onLogout, onSwitchToPublic }) => {
   const [viewMode, setViewMode] = useState('kanban'); // 'kanban' or 'list'
   const [sortOrder, setSortOrder] = useState('newest'); // 'newest', 'oldest'
   const [snackbar, setSnackbar] = useState({ open: false, message: '', severity: 'info' });
+  const [searchQuery, setSearchQuery] = useState('');
   
   // Filter state
   const [filters, setFilters] = useState({
@@ -535,7 +537,21 @@ const ProductTeamDashboard = ({ user, onLogout, onSwitchToPublic }) => {
   };
 
   const getIdeasByStatus = (status) => {
-    const filteredIdeas = ideas.filter(idea => idea && idea.id && idea.status === status);
+    let filteredIdeas = ideas.filter(idea => idea && idea.id && idea.status === status);
+    
+    // Apply search filter
+    if (searchQuery.trim()) {
+      const query = searchQuery.toLowerCase();
+      filteredIdeas = filteredIdeas.filter(idea => {
+        const titleMatch = idea.title?.toLowerCase().includes(query);
+        const descriptionMatch = idea.description?.toLowerCase().includes(query);
+        const categoryMatch = idea.category?.toLowerCase().includes(query);
+        const tagsMatch = idea.tags?.some(tag => tag.toLowerCase().includes(query));
+        const authorMatch = idea.authorName?.toLowerCase().includes(query);
+        
+        return titleMatch || descriptionMatch || categoryMatch || tagsMatch || authorMatch;
+      });
+    }
     
     // Sort ideas by creation date
     return filteredIdeas.sort((a, b) => {
@@ -623,9 +639,58 @@ const ProductTeamDashboard = ({ user, onLogout, onSwitchToPublic }) => {
       <AppBar position="static" elevation={1}>
         <Toolbar>
           <DashboardIcon sx={{ mr: 2 }} />
-          <Typography variant="h6" component="div" sx={{ flexGrow: 1 }}>
+          <Typography variant="h6" component="div">
             Product Team Dashboard
           </Typography>
+          
+          {/* Search Box */}
+          <TextField
+            placeholder="Search ideas..."
+            value={searchQuery}
+            onChange={(e) => setSearchQuery(e.target.value)}
+            size="small"
+            sx={{
+              ml: 3,
+              mr: 2,
+              minWidth: 250,
+              backgroundColor: 'rgba(255,255,255,0.15)',
+              borderRadius: 1,
+              '& .MuiOutlinedInput-root': {
+                color: 'white',
+                '& fieldset': {
+                  borderColor: 'rgba(255,255,255,0.3)'
+                },
+                '&:hover fieldset': {
+                  borderColor: 'rgba(255,255,255,0.5)'
+                },
+                '&.Mui-focused fieldset': {
+                  borderColor: 'rgba(255,255,255,0.7)'
+                }
+              },
+              '& .MuiInputBase-input::placeholder': {
+                color: 'rgba(255,255,255,0.7)',
+                opacity: 1
+              }
+            }}
+            InputProps={{
+              startAdornment: (
+                <SearchIcon sx={{ color: 'rgba(255,255,255,0.7)', mr: 1 }} />
+              ),
+              ...(searchQuery && {
+                endAdornment: (
+                  <IconButton
+                    size="small"
+                    onClick={() => setSearchQuery('')}
+                    sx={{ color: 'rgba(255,255,255,0.7)', p: 0.5 }}
+                  >
+                    <ClearIcon fontSize="small" />
+                  </IconButton>
+                )
+              })
+            }}
+          />
+          
+          <Box sx={{ flexGrow: 1 }} />
           <Button 
             color="inherit" 
             onClick={onSwitchToPublic}
@@ -671,24 +736,25 @@ const ProductTeamDashboard = ({ user, onLogout, onSwitchToPublic }) => {
             </IconButton>
           </Box>
           
-          {/* Sort Order Toggle */}
-          <IconButton
+          {/* Sort Order Toggle - Hidden per user request */}
+          {/* <IconButton
             color="inherit"
             onClick={() => setSortOrder(sortOrder === 'newest' ? 'oldest' : 'newest')}
             sx={{ mr: 1 }}
             title={`Sort by ${sortOrder === 'newest' ? 'Oldest First' : 'Newest First'}`}
           >
             {sortOrder === 'newest' ? <NewestIcon /> : <OldestIcon />}
-          </IconButton>
+          </IconButton> */}
           
-          <IconButton
+          {/* Settings icon moved to user profile menu */}
+          {/* <IconButton
             color="inherit"
             onClick={() => setShowSettings(true)}
             sx={{ mr: 1 }}
             title="Settings"
           >
             <SettingsIcon />
-          </IconButton>
+          </IconButton> */}
           <IconButton
             color="inherit"
             onClick={() => setShowExcelImport(true)}
@@ -730,6 +796,10 @@ const ProductTeamDashboard = ({ user, onLogout, onSwitchToPublic }) => {
         open={Boolean(anchorEl)}
         onClose={handleMenuClose}
       >
+        <MenuItem onClick={() => { handleMenuClose(); setShowSettings(true); }}>
+          <SettingsIcon sx={{ mr: 1 }} />
+          Settings
+        </MenuItem>
         <MenuItem onClick={handleLogout}>
           <LogoutIcon sx={{ mr: 1 }} />
           Logout
@@ -960,8 +1030,8 @@ const ProductTeamDashboard = ({ user, onLogout, onSwitchToPublic }) => {
             }
           }}>
             {Object.entries(statusColumns).map(([status, config]) => {
-              // Skip declined status as it will be in the drawer
-              if (status === 'declined') return null;
+              // Skip parked status as it will be in the drawer
+              if (status === 'parked') return null;
               const statusIdeas = getIdeasByStatus(status);
               
               return (
@@ -1643,7 +1713,7 @@ const ProductTeamDashboard = ({ user, onLogout, onSwitchToPublic }) => {
                 borderColor: 'error.main'
               }}
             >
-              {getIdeasByStatus('declined').length}
+              {getIdeasByStatus('parked').length}
             </Box>
           </Button>
           {provided.placeholder}
@@ -1701,7 +1771,7 @@ const ProductTeamDashboard = ({ user, onLogout, onSwitchToPublic }) => {
           </IconButton>
         </Box>
         <Box sx={{ p: 2, overflowY: 'auto', height: '100%' }}>
-          <Droppable droppableId="declined" type="CARD">
+          <Droppable droppableId="parked" type="CARD">
             {(provided, snapshot) => (
               <Box
                 ref={provided.innerRef}
@@ -1715,7 +1785,7 @@ const ProductTeamDashboard = ({ user, onLogout, onSwitchToPublic }) => {
                   transition: 'all 0.2s ease',
                 }}
               >
-                {getIdeasByStatus('declined').map((idea, index) => (
+                {getIdeasByStatus('parked').map((idea, index) => (
                   <Draggable 
                     key={`idea-${idea.id}`} 
                     draggableId={`idea-${idea.id}`} 
@@ -1732,7 +1802,7 @@ const ProductTeamDashboard = ({ user, onLogout, onSwitchToPublic }) => {
                           transform: snapshot.isDragging ? 'rotate(1deg) scale(1.01)' : 'none',
                           boxShadow: snapshot.isDragging ? 8 : 1,
                           opacity: snapshot.isDragging ? 0.9 : 1,
-                          border: `1px solid ${statusColumns.declined.color}40`,
+                          border: `1px solid ${statusColumns.parked.color}40`,
                           '&:hover': {
                             boxShadow: 3,
                             transform: 'translateY(-2px)'

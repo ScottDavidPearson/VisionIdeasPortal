@@ -21,9 +21,9 @@ import {
 } from '@mui/icons-material';
 import axios from 'axios';
 
-const LoginDialog = ({ open, onClose, onLoginSuccess }) => {
+const LoginDialog = ({ open, onClose, onLoginSuccess, onSwitchToRegister }) => {
   const [credentials, setCredentials] = useState({
-    username: '',
+    email: '',
     password: ''
   });
   const [loading, setLoading] = useState(false);
@@ -41,8 +41,8 @@ const LoginDialog = ({ open, onClose, onLoginSuccess }) => {
   const handleSubmit = async (event) => {
     event.preventDefault();
     
-    if (!credentials.username.trim() || !credentials.password.trim()) {
-      setError('Username and password are required');
+    if (!credentials.email.trim() || !credentials.password.trim()) {
+      setError('Email and password are required');
       return;
     }
 
@@ -50,7 +50,7 @@ const LoginDialog = ({ open, onClose, onLoginSuccess }) => {
     setError('');
 
     try {
-      console.log('🔐 Attempting login with credentials:', credentials.username);
+      console.log('🔐 Attempting login with credentials:', credentials.email);
       const response = await axios.post('/api/auth/login', credentials, {
         withCredentials: true,
         headers: {
@@ -93,7 +93,7 @@ const LoginDialog = ({ open, onClose, onLoginSuccess }) => {
   };
 
   const handleClose = () => {
-    setCredentials({ username: '', password: '' });
+    setCredentials({ email: '', password: '' });
     setError('');
     setShowPassword(false);
     onClose();
@@ -137,13 +137,14 @@ const LoginDialog = ({ open, onClose, onLoginSuccess }) => {
 
           <TextField
             fullWidth
-            label="Username"
-            value={credentials.username}
-            onChange={handleChange('username')}
+            label="Email Address"
+            type="email"
+            value={credentials.email}
+            onChange={handleChange('email')}
             margin="normal"
             required
             disabled={loading}
-            autoComplete="username"
+            autoComplete="email"
           />
 
           <TextField
@@ -171,11 +172,15 @@ const LoginDialog = ({ open, onClose, onLoginSuccess }) => {
             }}
           />
 
-          <Box sx={{ mt: 2, p: 2, backgroundColor: 'grey.50', borderRadius: 1 }}>
-            <Typography variant="body2" color="text.secondary">
-              <strong>Demo Credentials:</strong><br />
-              Username: <code>admin</code><br />
-              Password: <code>admin123</code>
+          <Box sx={{ mt: 2, textAlign: 'center' }}>
+            <Typography variant="body2">
+              Don't have an account?{' '}
+              <Button
+                onClick={() => onSwitchToRegister && onSwitchToRegister()}
+                sx={{ textTransform: 'none', p: 0, minWidth: 'auto' }}
+              >
+                Create one
+              </Button>
             </Typography>
           </Box>
         </DialogContent>
@@ -191,7 +196,7 @@ const LoginDialog = ({ open, onClose, onLoginSuccess }) => {
             type="submit"
             variant="contained"
             startIcon={loading ? <CircularProgress size={20} /> : <LoginIcon />}
-            disabled={loading || !credentials.username.trim() || !credentials.password.trim()}
+            disabled={loading || !credentials.email.trim() || !credentials.password.trim()}
           >
             {loading ? 'Logging in...' : 'Login'}
           </Button>

@@ -53,7 +53,7 @@ const statusColors = {
   'approved': 'success',
   'in_progress': 'info',
   'completed': 'success',
-  'declined': 'error'
+  'parked': 'error'
 };
 
 const statusLabels = {
@@ -62,7 +62,7 @@ const statusLabels = {
   'approved': 'Approved', 
   'in_progress': 'In Progress',
   'completed': 'Completed',
-  'declined': 'Declined'
+  'parked': 'Parking Lot'
 };
 
 const AdminIdeaDetailDialog = ({ open, onClose, idea, onIdeaUpdated, onDelete, settings }) => {
